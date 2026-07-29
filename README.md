@@ -35,6 +35,7 @@ Abra `http://localhost:5173`. O `pnpm dev` roda o ESLint junto, via `vite-plugin
 | Script | O que faz |
 |---|---|
 | `pnpm dev` | Servidor de desenvolvimento com lint |
+| `pnpm test` / `pnpm test:watch` | Vitest |
 | `pnpm build-prod` | Build de produção (`base: /OSeuClima/`) |
 | `pnpm preview` | Serve o build localmente |
 | `pnpm lint` / `pnpm lint:fix` | ESLint |
@@ -43,15 +44,24 @@ Abra `http://localhost:5173`. O `pnpm dev` roda o ESLint junto, via `vite-plugin
 
 ```
 src/
-├── composables/weather/   Estado do clima, ciclo de vida da cena, preferências
 ├── repositories/weather/  Chamadas HTTP (fetch, sem axios)
+├── services/weather/      useAsync por chamada, com a mensagem de erro
+├── composables/
+│   ├── core/              useAsync e useSnackbar (do vue-claude-rules)
+│   └── weather/           Estado do clima, ciclo de vida da cena, preferências
 ├── scene/                 Cena Three.js + leitura das cores do tema
-├── utils/weather.js       Código WMO → condição, rótulos, formatação de unidade
-├── plugins/vuetify.js     Tema: a paleta inteira, da UI ao cenário 3D
+├── utils/weather.js       Código WMO → condição e conversão de unidade
+├── locales/pt-BR/         Todo o texto da interface
+├── plugins/               Vuetify (tema) e i18n
 └── views/weather/         A única tela e seus componentes
 ```
 
-Nenhuma cor é escrita fora do tema — inclusive as dos materiais 3D, que leem os mesmos tokens via `src/scene/themeColor.js`.
+Dois invariantes que valem a pena conhecer antes de mexer:
+
+- **Nenhuma cor fora do tema** — inclusive as dos materiais 3D, que leem os mesmos tokens via `src/scene/themeColor.js`.
+- **Nenhum texto fora do locale** — os utils devolvem a *chave* i18n, nunca a frase pronta.
+
+Testes ficam em `test/` ao lado do que testam (`pnpm test`). As convenções completas estão em `CLAUDE.md` e `.claude/rules/`.
 
 ## Deploy
 
@@ -61,6 +71,6 @@ Para usar domínio próprio ou outro caminho, defina `BASE_PATH` no build.
 
 ## Stack
 
-Vue 3 · Vuetify 4 · Vue Router 5 · Three.js · Vite · ESLint
+Vue 3 · Vuetify 4 · Vue Router 5 · Three.js · vue-i18n · Vitest · Vite · ESLint
 
-Partiu do [vuetify-kit](https://github.com/gabriellopesweber/vuetify-kit). As convenções de código ficam em `CLAUDE.md` e `.claude/rules/`.
+Partiu do [vuetify-kit](https://github.com/gabriellopesweber/vuetify-kit), com as regras do [vue-claude-rules](https://github.com/gabriellopesweber/vue-claude-rules).
