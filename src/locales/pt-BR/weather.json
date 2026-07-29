@@ -1,0 +1,57 @@
+{
+  "weather": {
+    "search": {
+      "placeholder": "Buscar cidade...",
+      "aria_label": "Buscar cidade",
+      "not_found": "Cidade não encontrada. Tente outro nome."
+    },
+    "settings": {
+      "title": "Preferências",
+      "units": "Unidade",
+      "scene": "Cenário",
+      "scene_auto": "Tempo real",
+      "reduced_motion": "Reduzir animações"
+    },
+    "loading": "Descobrindo o clima da sua região...",
+    "stats": {
+      "feels_like": "Sensação",
+      "humidity": "Umidade",
+      "wind": "Vento"
+    },
+    "conditions": {
+      "clear": "Céu limpo",
+      "cloudy": "Nublado",
+      "rain": "Chuva",
+      "storm": "Tempestade",
+      "snow": "Neve",
+      "fog": "Neblina"
+    },
+    "taglines": {
+      "clear": "Dia perfeito pra sair sem casaco.",
+      "cloudy": "Céu meio emburrado, mas sem drama.",
+      "rain": "Nada de sair sem guarda-chuva!",
+      "storm": "Tempestade chegando — bora ficar em casa.",
+      "snow": "Hora de tirar o casaco pesado do armário.",
+      "fog": "Visibilidade baixa, dirija com calma."
+    },
+    "demo": {
+      "city": "Cidade Exemplo"
+    },
+    "notices": {
+      "unsupported": "Geolocalização não é suportada neste navegador.",
+      "denied": "Não conseguimos acessar sua localização — mostrando {city}.",
+      "demo": "Modo demonstração ativo — mostrando um cenário de exemplo.",
+      "unknown_place": "Local desconhecido"
+    },
+    "errors": {
+      "forecast": "Não foi possível carregar o clima agora.",
+      "search": "Não foi possível buscar essa cidade agora."
+    },
+    "units": {
+      "celsius": "°C",
+      "fahrenheit": "°F",
+      "kmh": "km/h",
+      "mph": "mph"
+    }
+  }
+}

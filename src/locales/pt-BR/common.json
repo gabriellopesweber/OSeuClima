@@ -1,0 +1,9 @@
+{
+  "common": {
+    "app_name": "O Seu Clima",
+    "retry": "Tentar de novo",
+    "search": "Buscar",
+    "close": "Fechar",
+    "empty_measure": "--"
+  }
+}

@@ -1,0 +1,159 @@
+# Configuração da stack deste projeto
+
+> Inventário local. Regras de *como/quando*: as regras de `.claude/rules/shared/`.
+> **Atualizar no mesmo PR** que muda o código correspondente.
+
+## O que este projeto é
+
+**Produto de uma tela só.** Mostra o clima atual + próximas 6 horas sobre um cenário 3D animado que reage à condição do tempo e ao dia/noite. Sem backend próprio, sem login, sem estado global: consome duas APIs públicas e guarda tudo em `ref` dentro da view.
+
+Consequências para quem trabalha aqui:
+
+- **A cena 3D é metade do produto.** Mexer no visual quase sempre é mexer em `src/scene/` + nos tokens do tema, não em CSS de componente.
+- **Não instale infraestrutura para "seguir o padrão".** Sem Pinia, sem axios, sem vue-i18n, sem suíte de teste — cada uma foi decisão consciente (ver seções abaixo). Se uma virar necessária de verdade, proponha antes.
+- **Uma rota.** Não há shell, menu nem layout compartilhado para manter.
+
+## Cores — o tema é a fonte única
+
+Tema único `clima` (`defaultTheme: 'clima'`, `dark: false`), definido em `src/plugins/vuetify.js`, que faz merge sobre o tema `light` do Vuetify.
+
+**Atenção:** o Vuetify 4.0 **não** traz os tokens MD3 que a regra compartilhada cita (`surface-container-*`, `outline-variant`, `secondary-container`). Vale o que está declarado no `colors` deste projeto:
+
+| Grupo | Tokens |
+|---|---|
+| Base | `background` (fundo da página), `surface`, `surface-muted`, `surface-track`, `on-surface`, `on-surface-subtle`, `outline-variant`, `primary`, `primary-darken-1`, `error` |
+| Acento por condição | `weather-{clear,cloudy,rain,storm,snow,fog}` — dirige o chip do `WeatherSummaryCard` |
+| Cena 3D — por condição | `scene-{condição}-sky-top`, `-sky-bottom`, `-ground`, `-cloud` para as 6 condições, mais `scene-fog-veil` |
+| Cena 3D — fixos | `scene-hill`, `scene-trunk`, `scene-leaf`, `scene-sun`, `scene-sun-glow`, `scene-raindrop`, `scene-snowflake`, `scene-lightning`, `scene-night-bounce` |
+
+O Vuetify gera `on-<token>` automaticamente para cada cor declarada.
+
+### Armadilha: os utilitários de texto do Vuetify não servem aqui
+
+Verificado em runtime neste projeto (Vuetify 4.1):
+
+- **`.text-on-surface`, `.text-on-background` e afins não existem.** O Vuetify **não** gera utilitário `.text-*` para cor com prefixo `on-`. A classe é ignorada em silêncio e o elemento herda a cor do pai — foi assim que a faixa horária ficou branca sobre branco.
+- **`.text-medium-emphasis` não deriva de `on-surface`** como a regra compartilhada sugere; neste tema resolve para branco a 60%, invisível sobre superfície clara.
+- **`.bg-background` define também `color: on-background`** (branco), e isso vaza para todo descendente que não seja `v-card`.
+
+Por isso o projeto usa três classes próprias, em `src/styles/main.css`, que leem o token direto:
+
+| Classe | Token | Uso |
+|---|---|---|
+| `.text-ink` | `on-surface` | Texto principal sobre superfície clara |
+| `.text-ink-muted` | `on-surface-muted` | Texto secundário (localização, tagline, rótulo de hora) |
+| `.text-ink-subtle` | `on-surface-subtle` | Rótulos pequenos (Sensação/Umidade/Vento) |
+
+**Não** troque essas classes por `text-medium-emphasis`/`text-on-surface` "para padronizar" — o texto some. As CSS vars (`--v-theme-on-surface`, etc.) existem e funcionam; só os utilitários é que não.
+
+### Como a cena 3D consome o tema
+
+Material de WebGL não aceita classe CSS. `src/scene/themeColor.js` lê o token na origem (`--v-theme-<token>`, publicado pelo Vuetify como `R,G,B`) e devolve:
+
+- `sceneColor(token)` → `THREE.Color`, para material/luz
+- `sceneCssColor(token, darken)` → string `rgb()`, para o gradiente do céu pintado num `<canvas>` 2D
+
+É a mesma abordagem que a regra compartilhada prescreve para alimentar um renderer de canvas a partir do tema. **Cor nova na cena entra como token no `colors`**, nunca como hex no `weatherScene.js`. Token ausente aparece em magenta — é proposital, para a falha ser óbvia.
+
+### Adicionar uma condição de tempo
+
+1. Tokens `scene-<nova>-*` e `weather-<nova>` em `src/plugins/vuetify.js`
+2. Entrada em `PALETTES` no `src/scene/weatherScene.js`
+3. Códigos WMO em `CODES_BY_CATEGORY` + label/tagline/ícone em `src/utils/weather.js`
+
+## Three.js — o que não é óbvio
+
+O protótipo de origem foi escrito para o Three r128; o projeto usa r185. Duas correções que **não** podem ser desfeitas:
+
+- **Luz é física desde o r155.** As intensidades herdadas só reproduzem o brilho original multiplicadas por π — é o que `LEGACY_LIGHT_SCALE` faz. Remover a constante escurece a cena inteira.
+- **`CanvasTexture` de céu precisa de `colorSpace = SRGBColorSpace`.** Sem isso o gradiente sai dessaturado.
+
+O `dispose()` devolve geometrias, materiais, textura e renderer — é para isso que existe a lista `disposables`; ao criar material/geometria novos, registre com `track()`.
+
+## Prefixo de persistência
+
+**Nenhuma chave persistida** — não há `localStorage`/`sessionStorage` no `src/`. As preferências (unidade, cenário, animações reduzidas) vivem só na sessão, em `useWeatherSettings`.
+
+Ao introduzir a primeira, use o prefixo `oseuclima_` e registre aqui.
+
+## Autenticação / `api.js`
+
+Não há `src/services/api.js` e **não há axios** — as APIs são públicas e sem credencial. Ver a divergência escrita em `catalog-data.md`.
+
+## Defaults de componentes (`src/plugins/vuetify.js`)
+
+| Componente | Defaults aplicados |
+|---|---|
+| `VCard` | `rounded: 'xl', elevation: 0` |
+| `VBtn` | `rounded: 'lg', flat: true` |
+| `VTextField` | `rounded: 'lg', density: 'comfortable', autocomplete: 'off'` |
+| `VAutocomplete` | `rounded: 'lg', density: 'comfortable', autocomplete: 'off'` |
+| `VNumberInput` | `rounded: 'lg', density: 'comfortable'` |
+
+Registro **global** de `components`/`directives` (`import * as`) — qualquer componente Vuetify pode ser usado sem import, ao custo de levar o bundle inteiro. Trocar por auto-import é otimização legítima.
+
+**Tema único** — não construir toggle dark/light por conta própria. O que muda com o horário é a **cena** (`isDay`), não o tema da UI.
+
+## Fontes
+
+`Baloo 2` (display) e `Manrope` (corpo), carregadas por `<link>` no `index.html`. `src/styles/main.css` aplica Manrope no `.v-application` e expõe `.font-display` para os números grandes. **Não existe `theme.fonts` no Vuetify 4** — configurar fonte ali não tem efeito.
+
+## i18n
+
+**vue-i18n, um idioma: `pt-BR`.** Não há seletor de idioma — o objetivo aqui é manter o texto fora do código, não traduzir para outras línguas (ainda).
+
+```
+src/locales/pt-BR/
+├── common.json     # app_name, retry, search, close, empty_measure
+└── weather.json    # tudo da tela: search, settings, conditions, taglines, notices, errors, units, stats
+```
+
+`src/plugins/i18n.js` faz deep merge via `import.meta.glob('../locales/**/*.json', { eager: true })` — **criar o arquivo já o carrega**, não há registro manual. O idioma sai do nome da pasta.
+
+Regras locais:
+
+- **Chave, não texto, sai do `src/utils/weather.js`.** `conditionLabelKey(category)` devolve `weather.conditions.<categoria>`; quem chama `t()` é o componente. Categoria nova exige rótulo **e** tagline no locale — há teste que falha se faltar (`src/locales/test/messages.test.js`).
+- `weather.notices.denied` usa interpolação `{city}`; o teste garante que o placeholder não se perca numa reescrita.
+- Símbolos de unidade (`°C`, `km/h`) também moram no locale (`weather.units.*`), para não voltarem como literal no template.
+
+> O i18n-ally do VS Code pode acusar "key does not exist" logo depois de criar um arquivo de locale — é cache do editor. A verdade é `pnpm test`.
+
+## Scripts
+
+| Script | O que faz |
+|---|---|
+| `pnpm dev` | `vite --mode development` (lint em tempo real via `vite-plugin-checker`) |
+| `pnpm build-dev` | `vite build --mode development` |
+| `pnpm build-prod` | `vite build --mode production` — usa `base: /OSeuClima/` |
+| `pnpm preview` | `vite preview` |
+| `pnpm lint` / `pnpm lint:fix` | `eslint "./src/**/*.{js,vue}"` |
+| `pnpm test` / `pnpm test:watch` | Vitest |
+| `pnpm rules:sync` / `pnpm rules:check` | sincroniza/valida `.claude/rules/shared/` |
+
+## Deploy
+
+**GitHub Pages**, por `.github/workflows/deploy.yml`, a cada push em `master` (o job roda `pnpm lint` e `pnpm test` antes do build). O Pages serve o site em `/OSeuClima/`, então:
+
+- `vite.config.js` usa `base: '/OSeuClima/'` em produção (sobrescrevível por `BASE_PATH`, para domínio próprio)
+- o workflow copia `index.html` para `404.html`, porque o Pages não tem fallback de SPA
+- geolocalização exige HTTPS — o Pages já serve em HTTPS
+
+## Testes
+
+**Vitest**, `pnpm test` (run único) e `pnpm test:watch`. Ambiente padrão `node`; `include` é `src/**/test/**/*.{test,spec}.js` — **fora de uma pasta `test/` o arquivo não roda**.
+
+| Suíte | O que cobre |
+|---|---|
+| `src/utils/test/weather.test.js` | Mapa WMO → condição (incluindo código desconhecido), conversão de unidade, zero como valor real vs medida ausente, construtores de chave |
+| `src/composables/weather/test/useWeather.test.js` | Modo demonstração, busca por cidade (sucesso, não encontrada, falha de rede, termo vazio), recorte da faixa horária, fallback de geolocalização |
+| `src/locales/test/messages.test.js` | Todo categoria tem rótulo e tagline; placeholder `{city}` preservado; nenhuma chave vazia |
+
+O que se mocka é a **borda**: `@/services/weather/useWeatherService` e `vue-i18n` (o `t` devolve a própria chave, então o teste asserta a chave e não sofre com mudança de texto). O repository e o `fetch` nunca são chamados.
+
+**Watcher de composable solto:** `useWeather` usa `watch` com flush `pre` padrão. Ele **não** dispara síncrono, mas flusha num `await nextTick()` — verificado neste projeto, não precisa de componente host. Se um dia precisar de `onMounted`/`provide`, aí sim adote `withSetup` do scaffold com `// @vitest-environment jsdom`.
+
+A cena 3D **não é testada** por unidade: precisa de WebGL. Ela é verificada rodando o app (ver README).
+
+## CI
+
+Só o job de deploy, que roda **`pnpm lint` e `pnpm test` antes do build**: teste vermelho barra a publicação. Manter a suíte verde não é opcional.
