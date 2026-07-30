@@ -17,7 +17,7 @@ const { t } = useI18n()
 
 const canvasRef = ref(null)
 
-const { units, demoCategory, reducedMotion } = useWeatherSettings()
+const { units, demoCategory, seasonOverride, reducedMotion } = useWeatherSettings()
 const {
   isLoading,
   notice,
@@ -26,6 +26,7 @@ const {
   category,
   isDay,
   windSpeed,
+  season,
   hourly,
   searchTerm,
   searchBusy,
@@ -35,7 +36,9 @@ const {
   search,
 } = useWeather(demoCategory)
 
-useWeatherScene(canvasRef, { category, isDay, wind: windSpeed, reducedMotion })
+const activeSeason = computed(() => (seasonOverride.value === 'auto' ? season.value : seasonOverride.value))
+
+useWeatherScene(canvasRef, { category, isDay, wind: windSpeed, season: activeSeason, reducedMotion })
 
 // Só cidade e condição remontam o cartão: trocar °C/°F muda os números sem
 // reanimar a tela inteira.
@@ -69,6 +72,7 @@ onMounted(load)
           <WeatherSettingsMenu
             v-model:units="units"
             v-model:demo-category="demoCategory"
+            v-model:season-override="seasonOverride"
             v-model:reduced-motion="reducedMotion"
           />
         </div>

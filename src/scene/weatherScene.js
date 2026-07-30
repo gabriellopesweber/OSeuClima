@@ -24,6 +24,8 @@ import {
   WebGLRenderer,
 } from 'three'
 
+import { DEFAULT_SEASON, SEASONS } from '@/utils/season'
+
 import { approach, dampFactor, isSettled } from './interpolate'
 import { sceneColor, toCssColor } from './themeColor'
 import { windStrength } from './wind'
@@ -58,13 +60,16 @@ const FOG_FAR = { off: 400, on: 24 }
 const PARTICLE_OPACITY = { none: 0, rain: 0.7, snow: 0.9 }
 const PARTICLE_SIZE = { rain: 0.05, snow: 0.14 }
 
+// `seasonBlend` é quanto o chão da estação puxa o chão da condição. A neve
+// zera: neve acumulada cobre a vegetação, então a estação não deve aparecer
+// por baixo dela.
 const PALETTES = {
-  clear: { sky: 'scene-clear', ground: 'scene-clear-ground', cloud: 'scene-clear-cloud', particle: 'none', veil: null, sun: true, cloudCount: 2 },
-  cloudy: { sky: 'scene-cloudy', ground: 'scene-cloudy-ground', cloud: 'scene-cloudy-cloud', particle: 'none', veil: null, sun: true, cloudCount: 6 },
-  rain: { sky: 'scene-rain', ground: 'scene-rain-ground', cloud: 'scene-rain-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7 },
-  storm: { sky: 'scene-storm', ground: 'scene-storm-ground', cloud: 'scene-storm-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7, lightning: true },
-  snow: { sky: 'scene-snow', ground: 'scene-snow-ground', cloud: 'scene-snow-cloud', particle: 'snow', veil: null, sun: false, cloudCount: 5 },
-  fog: { sky: 'scene-fog', ground: 'scene-fog-ground', cloud: 'scene-fog-cloud', particle: 'none', veil: 'scene-fog-veil', sun: false, cloudCount: 4 },
+  clear: { sky: 'scene-clear', ground: 'scene-clear-ground', cloud: 'scene-clear-cloud', particle: 'none', veil: null, sun: true, cloudCount: 2, seasonBlend: 0.55 },
+  cloudy: { sky: 'scene-cloudy', ground: 'scene-cloudy-ground', cloud: 'scene-cloudy-cloud', particle: 'none', veil: null, sun: true, cloudCount: 6, seasonBlend: 0.5 },
+  rain: { sky: 'scene-rain', ground: 'scene-rain-ground', cloud: 'scene-rain-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7, seasonBlend: 0.4 },
+  storm: { sky: 'scene-storm', ground: 'scene-storm-ground', cloud: 'scene-storm-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7, lightning: true, seasonBlend: 0.35 },
+  snow: { sky: 'scene-snow', ground: 'scene-snow-ground', cloud: 'scene-snow-cloud', particle: 'snow', veil: null, sun: false, cloudCount: 5, seasonBlend: 0 },
+  fog: { sky: 'scene-fog', ground: 'scene-fog-ground', cloud: 'scene-fog-cloud', particle: 'none', veil: 'scene-fog-veil', sun: false, cloudCount: 4, seasonBlend: 0.35 },
 }
 
 const HILLS = [[-7, -1.7, -6, 3], [8, -1.9, -8, 4], [-3, -1.8, -10, 2.5]]
@@ -127,7 +132,7 @@ export function createWeatherScene(canvas) {
   const trunkGeometry = track(new CylinderGeometry(0.12, 0.15, 1, 6))
   const trunkMaterial = track(new MeshStandardMaterial({ color: sceneColor('scene-trunk'), flatShading: true }))
   const leafGeometry = track(new ConeGeometry(0.7, 1.6, 7))
-  const leafMaterial = track(new MeshStandardMaterial({ color: sceneColor('scene-leaf'), flatShading: true }))
+  const leafMaterial = track(new MeshStandardMaterial({ color: sceneColor('season-summer-leaf'), flatShading: true }))
   const leaves = []
   TREES.forEach(([x, y, z], index) => {
     const trunk = new Mesh(trunkGeometry, trunkMaterial)
@@ -195,6 +200,7 @@ export function createWeatherScene(canvas) {
   let lightningTimer = 0
   let category = 'clear'
   let isDay = true
+  let season = DEFAULT_SEASON
   let reduced = false
   let particleMode = 'none'
   let gust = 0
@@ -203,11 +209,11 @@ export function createWeatherScene(canvas) {
   // mexe só no alvo — quem interpola é o loop.
   const live = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
-    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0, wind: 0,
+    leaf: new Color(), hill: new Color(), fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0, wind: 0,
   }
   const target = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
-    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false, wind: 0,
+    leaf: new Color(), hill: new Color(), fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false, wind: 0,
   }
   const paintedSky = { top: new Color(), bottom: new Color() }
 
@@ -231,15 +237,20 @@ export function createWeatherScene(canvas) {
     particleGeometry.setDrawRange(0, count)
   }
 
-  function setWeather(nextCategory, dayFlag) {
-    const changed = nextCategory !== category || dayFlag !== isDay
-    category = PALETTES[nextCategory] ? nextCategory : 'clear'
-    isDay = dayFlag !== false
+  function applyTargets() {
     const palette = PALETTES[category]
 
     target.skyTop.copy(sceneColor(`${palette.sky}-sky-top`, isDay ? 0 : NIGHT_SKY_TOP_DARKEN))
     target.skyBottom.copy(sceneColor(`${palette.sky}-sky-bottom`, isDay ? 0 : NIGHT_SKY_BOTTOM_DARKEN))
-    target.ground.copy(sceneColor(palette.ground))
+
+    // O chão da condição carrega a luz e a umidade do tempo; a estação puxa a
+    // cor da vegetação por cima. A folhagem vem inteira da estação.
+    target.ground.copy(sceneColor(palette.ground)).lerp(sceneColor(`season-${season}-ground`), palette.seasonBlend)
+    target.leaf.copy(sceneColor(`season-${season}-leaf`))
+    // As colinas são vegetação distante: sem isto, outono deixa árvore laranja
+    // e chão dourado sobre morro verde-vivo.
+    target.hill.copy(sceneColor('scene-hill')).lerp(sceneColor(`season-${season}-ground`), palette.seasonBlend)
+
     target.cloud.copy(sceneColor(palette.cloud))
     if (palette.veil) target.veil.copy(sceneColor(palette.veil))
     target.fog = palette.veil ? 1 : 0
@@ -250,10 +261,23 @@ export function createWeatherScene(canvas) {
     target.lightning = !!palette.lightning
 
     clouds.forEach((cloud, index) => { cloud.userData.target = index < palette.cloudCount ? 1 : 0 })
+  }
+
+  function setWeather(nextCategory, dayFlag) {
+    const changed = nextCategory !== category || dayFlag !== isDay
+    category = PALETTES[nextCategory] ? nextCategory : 'clear'
+    isDay = dayFlag !== false
+    applyTargets()
 
     // Rajada: as nuvens aceleram e desaceleram, para a mudança parecer que o
     // tempo "chegou" em vez de ter sido trocado.
     if (changed && !reduced) gust = 1
+  }
+
+  /** Estação já resolvida (hemisfério incluído) por `@/utils/season`. */
+  function setSeason(nextSeason) {
+    season = SEASONS.includes(nextSeason) ? nextSeason : DEFAULT_SEASON
+    applyTargets()
   }
 
   /** Vento medido, em km/h. Interpola como o resto — trocar de cidade não deve
@@ -267,6 +291,8 @@ export function createWeatherScene(canvas) {
     live.skyBottom.copy(target.skyBottom)
     live.ground.copy(target.ground)
     live.cloud.copy(target.cloud)
+    live.leaf.copy(target.leaf)
+    live.hill.copy(target.hill)
     live.veil.copy(target.veil)
     live.fog = target.fog
     live.hemi = target.hemi
@@ -291,6 +317,8 @@ export function createWeatherScene(canvas) {
       paintedSky.bottom.copy(live.skyBottom)
     }
     groundMaterial.color.copy(live.ground)
+    leafMaterial.color.copy(live.leaf)
+    hillMaterial.color.copy(live.hill)
     clouds.forEach((cloud) => {
       const presence = cloud.userData.presence
       cloud.visible = presence > 0.01
@@ -315,6 +343,8 @@ export function createWeatherScene(canvas) {
     live.skyBottom.lerp(target.skyBottom, blend)
     live.ground.lerp(target.ground, blend)
     live.cloud.lerp(target.cloud, blend)
+    live.leaf.lerp(target.leaf, blend)
+    live.hill.lerp(target.hill, blend)
     // Com a neblina ainda invisível a cor viva não importa; copiá-la evita que
     // ela entre partindo do preto e escureça a cena no começo da transição.
     if (target.fog > 0) {
@@ -440,6 +470,7 @@ export function createWeatherScene(canvas) {
 
   return {
     setWeather,
+    setSeason,
     setWind,
     setReducedMotion,
     resize,

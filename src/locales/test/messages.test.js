@@ -1,6 +1,7 @@
 import common from '@/locales/pt-BR/common.json'
 import weather from '@/locales/pt-BR/weather.json'
-import { conditionLabelKey, taglineKey, WEATHER_CATEGORIES } from '@/utils/weather'
+import { SEASONS } from '@/utils/season'
+import { conditionLabelKey, seasonLabelKey, taglineKey, WEATHER_CATEGORIES } from '@/utils/weather'
 
 import { describe, expect, it } from 'vitest'
 
@@ -13,6 +14,12 @@ describe('locale pt-BR', () => {
     WEATHER_CATEGORIES.forEach((category) => {
       expect(resolve(conditionLabelKey(category)), `falta ${conditionLabelKey(category)}`).toBeTruthy()
       expect(resolve(taglineKey(category)), `falta ${taglineKey(category)}`).toBeTruthy()
+    })
+  })
+
+  it('has a label for every season', () => {
+    SEASONS.forEach((season) => {
+      expect(resolve(seasonLabelKey(season)), `falta ${seasonLabelKey(season)}`).toBeTruthy()
     })
   })
 

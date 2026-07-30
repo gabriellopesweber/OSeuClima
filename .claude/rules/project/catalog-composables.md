@@ -22,9 +22,9 @@ O que **não** foi adotado: `useAlertManager`/`GlobalAlertStack` (nenhuma mensag
 
 | Composable | Retorna | Usar para |
 |---|---|---|
-| `useWeather(demoCategory)` | `phase`, `isLoading`, `notice`, `place`, `measures`, `category`, `isDay`, `windSpeed`, `hourly`, `searchTerm`, `searchBusy`, `searchError`, `load()`, `locate()`, `search()` | Todo o estado do clima: carga inicial, geolocalização com fallback para São Paulo, busca por cidade e modo demonstração. Consome `useWeatherService` — não fala com repository direto |
-| `useWeatherScene(canvasRef, { category, isDay, wind, reducedMotion })` | nada (efeito) | Amarrar a cena 3D ao ciclo de vida da view: cria no `onMounted`, reage às refs por `watch`, observa resize e faz `dispose()` no unmount. Única porta de entrada para o Three.js |
-| `useWeatherSettings()` | `units`, `demoCategory`, `reducedMotion` | Preferências da sessão. `reducedMotion` nasce respeitando `prefers-reduced-motion` do sistema |
+| `useWeather(demoCategory)` | `phase`, `isLoading`, `notice`, `place`, `measures`, `category`, `isDay`, `windSpeed`, `season`, `hourly`, `searchTerm`, `searchBusy`, `searchError`, `load()`, `locate()`, `search()` | Todo o estado do clima: carga inicial, geolocalização com fallback para São Paulo, busca por cidade e modo demonstração. Consome `useWeatherService` — não fala com repository direto |
+| `useWeatherScene(canvasRef, { category, isDay, wind, season, reducedMotion })` | nada (efeito) | Amarrar a cena 3D ao ciclo de vida da view: cria no `onMounted`, reage às refs por `watch`, observa resize e faz `dispose()` no unmount. Única porta de entrada para o Three.js |
+| `useWeatherSettings()` | `units`, `demoCategory`, `seasonOverride`, `reducedMotion` | Preferências da sessão. `reducedMotion` nasce respeitando `prefers-reduced-motion` do sistema; `seasonOverride` em `'auto'` deixa a data e a latitude decidirem |
 
 **São factories, não singletons** — o estado nasce dentro da função, uma instância por montagem da view.
 
@@ -37,6 +37,8 @@ O que **não** foi adotado: `useAlertManager`/`GlobalAlertStack` (nenhuma mensag
 Os de domínio ficam em `src/composables/weather/`, as primitivas em `src/composables/core/`. Composable que só orquestre uma view específica deve ser co-localizado em `src/views/{feature}/composables/` — hoje não há nenhum, porque a view é fina o bastante para não precisar de orquestrador.
 
 ## Lógica pura — não é composable
+
+`src/utils/season.js` resolve a estação a partir de data + latitude (ver `stack.md`); `useWeather` guarda a latitude de onde a previsão veio e expõe `season` já resolvida.
 
 Conhecimento de domínio sem reatividade fica em `src/utils/weather.js`: `categorizeWeatherCode` (código WMO → condição), `WEATHER_ICONS`, `DEMO_MEASURES`, os conversores `convertTemperature`/`convertWind` e os **construtores de chave** `conditionLabelKey`/`taglineKey`/`temperatureUnitKey`/`windUnitKey`.
 

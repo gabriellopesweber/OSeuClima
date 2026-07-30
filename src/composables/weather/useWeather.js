@@ -2,9 +2,12 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useWeatherService } from '@/services/weather/useWeatherService'
+import { seasonFor } from '@/utils/season'
 import { categorizeWeatherCode, DEFAULT_CATEGORY, DEMO_MEASURES } from '@/utils/weather'
 
 const FALLBACK_CITY = 'São Paulo'
+// Latitude de referência do modo demonstração, para a estação sair determinística.
+const DEMO_LATITUDE = -23.55
 const GEOLOCATION_TIMEOUT = 8000
 const HOURLY_SLOTS = 6
 
@@ -48,12 +51,16 @@ export function useWeather(demoCategory) {
   const hourly = ref([])
   const searchTerm = ref('')
   const searchError = ref('')
+  // Só o hemisfério importa, mas guardar a latitude crua evita ter que
+  // recalcular o sinal em três lugares.
+  const latitude = ref(null)
 
   const isLoading = computed(() => phase.value === 'loading')
   const searchBusy = computed(() => getCityForecast.loading.value)
   const category = computed(() => measures.value.category)
   const isDay = computed(() => measures.value.isDay)
   const windSpeed = computed(() => measures.value.windSpeed)
+  const season = computed(() => seasonFor(new Date(), latitude.value))
 
   const applyForecast = (forecast) => {
     measures.value = toMeasures(forecast)
@@ -65,6 +72,7 @@ export function useWeather(demoCategory) {
     phase.value = 'ready'
     notice.value = t('weather.notices.demo')
     place.value = { city: t('weather.demo.city'), region: '', country: '' }
+    latitude.value = DEMO_LATITUDE
     measures.value = { ...preset, isDay: true, category: demo }
     hourly.value = Array.from({ length: HOURLY_SLOTS }, (_, index) => ({
       label: `${(10 + index) % 24}h`,
@@ -87,6 +95,7 @@ export function useWeather(demoCategory) {
         region: result.match.admin1 ?? '',
         country: result.match.country ?? '',
       }
+      latitude.value = result.match.latitude ?? null
       phase.value = 'ready'
       searchError.value = ''
       if (!asFallback) notice.value = ''
@@ -105,15 +114,16 @@ export function useWeather(demoCategory) {
     return loadCity(FALLBACK_CITY, { asFallback: true })
   }
 
-  const loadByCoords = async (latitude, longitude) => {
+  const loadByCoords = async (lat, lon) => {
     try {
-      const { place: located, forecast } = await getLocatedForecast.execute(latitude, longitude)
+      const { place: located, forecast } = await getLocatedForecast.execute(lat, lon)
       applyForecast(forecast)
       place.value = {
         city: located.city || located.locality || t('weather.notices.unknown_place'),
         region: located.principalSubdivision ?? '',
         country: located.countryName ?? '',
       }
+      latitude.value = lat
       phase.value = 'ready'
       notice.value = ''
     } catch {
@@ -163,6 +173,7 @@ export function useWeather(demoCategory) {
     category,
     isDay,
     windSpeed,
+    season,
     hourly,
     searchTerm,
     searchBusy,

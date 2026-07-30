@@ -37,6 +37,7 @@ export const DEMO_MEASURES = {
 
 // Texto visível nunca sai daqui pronto — só a chave, para o componente traduzir.
 export const conditionLabelKey = (category) => `weather.conditions.${category}`
+export const seasonLabelKey = (season) => `weather.seasons.${season}`
 export const taglineKey = (category) => `weather.taglines.${category}`
 export const temperatureUnitKey = (units) => (units === 'imperial' ? 'weather.units.fahrenheit' : 'weather.units.celsius')
 export const windUnitKey = (units) => (units === 'imperial' ? 'weather.units.mph' : 'weather.units.kmh')

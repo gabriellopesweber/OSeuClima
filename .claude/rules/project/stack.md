@@ -22,7 +22,8 @@ Tema único `clima` (`defaultTheme: 'clima'`, `dark: false`), definido em `src/p
 | Base | `background`, `surface`, `surface-muted`, `on-surface`, `on-surface-muted`, `on-surface-subtle`, `outline-variant`, `primary`, `error` |
 | Acento por condição | `weather-{clear,cloudy,rain,storm,snow,fog}` — dirige o chip do `WeatherSummaryCard` |
 | Cena 3D — por condição | `scene-{condição}-sky-top`, `-sky-bottom`, `-ground`, `-cloud` para as 6 condições, mais `scene-fog-veil` |
-| Cena 3D — fixos | `scene-hill`, `scene-trunk`, `scene-leaf`, `scene-sun`, `scene-sun-glow`, `scene-raindrop`, `scene-snowflake`, `scene-lightning`, `scene-night-bounce` |
+| Vegetação por estação | `season-{spring,summer,autumn,winter}-ground` e `-leaf` |
+| Cena 3D — fixos | `scene-hill`, `scene-trunk`, `scene-sun`, `scene-sun-glow`, `scene-raindrop`, `scene-snowflake`, `scene-lightning`, `scene-night-bounce` |
 
 Token que não está nesta tabela nem na lista do tema padrão (`shared/vuetify.md`) **não existe** — vira cor vazia, sem erro.
 
@@ -75,10 +76,26 @@ Ao adicionar algo que muda com a condição do tempo, ponha em `target` e deixe 
 
 **Motion reduzido:** a cena usa `LAMBDA_REDUCED` (convergência quase imediata) e desliga a rajada; o DOM é coberto pelo interruptor global em `src/styles/main.css` (`.motion-reduced` + `prefers-reduced-motion`).
 
+### A estação pinta a vegetação
+
+`src/utils/season.js` resolve a estação a partir da **data e da latitude** — estações meteorológicas (blocos de três meses), invertidas abaixo do equador. Sem latitude conhecida assume hemisfério **sul**: o app é pt-BR, e errar para o outro lado mostraria outono em pleno verão.
+
+Três superfícies são vegetação e mudam juntas, senão o cenário se contradiz (árvore laranja sobre morro verde-vivo):
+
+| Superfície | Como |
+|---|---|
+| Folhagem | vem **inteira** da estação (`season-<estação>-leaf`) |
+| Chão | cor da condição **misturada** com `season-<estação>-ground`, no peso `seasonBlend` da paleta |
+| Colinas | `scene-hill` misturado com o mesmo chão da estação |
+
+`seasonBlend` é **zero na neve**: neve acumulada cobre a vegetação, então a estação não deve aparecer por baixo dela. A condição continua carregando a luz e a umidade do tempo; a estação só puxa a cor.
+
+O usuário pode forçar a estação nas preferências (`seasonOverride`) — sem isso o efeito só seria visível três meses por ano.
+
 ### Adicionar uma condição de tempo
 
 1. Tokens `scene-<nova>-*` e `weather-<nova>` em `src/plugins/vuetify.js`
-2. Entrada em `PALETTES` no `src/scene/weatherScene.js`
+2. Entrada em `PALETTES` no `src/scene/weatherScene.js`, **com `seasonBlend`**
 3. Códigos WMO em `CODES_BY_CATEGORY` + label/tagline/ícone em `src/utils/weather.js`
 
 ## Three.js — o que não é óbvio
@@ -170,6 +187,7 @@ Regras locais:
 | `src/locales/test/messages.test.js` | Todo categoria tem rótulo e tagline; placeholder `{city}` preservado; nenhuma chave vazia |
 | `src/scene/test/interpolate.test.js` | Damping: converge sem passar do alvo, não anda com `dt` zero/negativo, e é independente de frame-rate |
 | `src/scene/test/wind.test.js` | Normalização do vento: cresce, satura no teto, e trata medida ausente/negativa como calmaria em vez de propagar `NaN` para a cena |
+| `src/utils/test/season.test.js` | Estação por mês nos dois hemisférios, inversão abaixo do equador, fallback sem latitude e virada de dezembro |
 
 O que se mocka é a **borda**: `@/services/weather/useWeatherService` e `vue-i18n` (o `t` devolve a própria chave, então o teste asserta a chave e não sofre com mudança de texto). O repository e o `fetch` nunca são chamados.
 

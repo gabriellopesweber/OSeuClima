@@ -2,13 +2,31 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { conditionLabelKey, WEATHER_CATEGORIES, WEATHER_ICONS } from '@/utils/weather'
+import { SEASONS } from '@/utils/season'
+import { conditionLabelKey, seasonLabelKey, WEATHER_CATEGORIES, WEATHER_ICONS } from '@/utils/weather'
 
 const { t } = useI18n()
 
+const SEASON_ICONS = {
+  spring: 'mdi-flower',
+  summer: 'mdi-white-balance-sunny',
+  autumn: 'mdi-leaf-maple',
+  winter: 'mdi-snowflake',
+}
+
 const units = defineModel('units', { type: String, default: 'metric' })
 const demoCategory = defineModel('demoCategory', { type: String, default: 'auto' })
+const seasonOverride = defineModel('seasonOverride', { type: String, default: 'auto' })
 const reducedMotion = defineModel('reducedMotion', { type: Boolean, default: false })
+
+const seasonOptions = computed(() => [
+  { value: 'auto', title: t('weather.settings.season_auto'), props: { prependIcon: 'mdi-calendar-month' } },
+  ...SEASONS.map((season) => ({
+    value: season,
+    title: t(seasonLabelKey(season)),
+    props: { prependIcon: SEASON_ICONS[season] },
+  })),
+])
 
 // `title`/`value`/`props` são as chaves que o VSelect entende sem slot: o
 // `props` de cada item vira atributo do VListItem correspondente.
@@ -73,6 +91,14 @@ const sceneOptions = computed(() => [
         v-model="demoCategory"
         :items="sceneOptions"
         :label="t('weather.settings.scene')"
+        hide-details
+        class="mb-3"
+      />
+
+      <v-select
+        v-model="seasonOverride"
+        :items="seasonOptions"
+        :label="t('weather.settings.season')"
         hide-details
         class="mb-2"
       />

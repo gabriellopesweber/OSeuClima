@@ -32,7 +32,7 @@ Ver `.claude/rules/shared/feedback.md` para *quando* usar cada mecanismo. Neste 
 | `WeatherSummaryCard` | Cartão branco principal: chip da condição, cidade, temperatura grande, tagline e as 3 medidas (sensação/umidade/vento). Recebe os objetos crus e formata internamente. | Props: `place` (required), `measures` (required), `units` (default: `'metric'`) |
 | `WeatherHourlyStrip` | Faixa horizontal rolável com as próximas horas. Vazia se `items` for `[]`. | Props: `items` (default: `[]`), `units` (default: `'metric'`) |
 | `WeatherSearchField` | Pílula branca de busca de cidade — input + botão. Não busca sozinho: emite e a view decide. | v-model: `String` (termo) · Props: `busy` · Emits: `search` |
-| `WeatherSettingsMenu` | Menu de preferências (unidade °C/°F, cenário, animações reduzidas). Superfície das três opções que o protótipo expunha como props. | v-model: `units`, `demoCategory`, `reducedMotion` |
+| `WeatherSettingsMenu` | Menu de preferências: unidade °C/°F, cenário, estação e animações reduzidas. Os dois selects usam a API nativa do `VSelect` (`title`/`value`/`props` por item) — **não** recriar o slot `#item`, que renderiza a lista vazia | v-model: `units`, `demoCategory`, `seasonOverride`, `reducedMotion` |
 | `WeatherNotice` | Tarja de aviso persistente (geolocalização negada, modo demonstração) com ação de repetir. | Props: `text` (required) · Emits: `retry` |
 | `WeatherLoadingOverlay` | Véu sobre a tela enquanto a primeira leitura carrega. Sem props. | — |
 

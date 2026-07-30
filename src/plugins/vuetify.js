@@ -54,10 +54,20 @@ const colors = {
   'scene-fog-cloud': '#D7DADD',
   'scene-fog-veil': '#C9D1D6',
 
+  // Vegetação por estação. O chão da condição é misturado com o chão da
+  // estação; a folhagem vem inteira daqui.
+  'season-spring-ground': '#A8D98B',
+  'season-spring-leaf': '#71C177',
+  'season-summer-ground': '#8BD17A',
+  'season-summer-leaf': '#4F9E5A',
+  'season-autumn-ground': '#C3A860',
+  'season-autumn-leaf': '#C4713A',
+  'season-winter-ground': '#A9B5AE',
+  'season-winter-leaf': '#6E5A45',
+
   // Cenário 3D — elementos fixos.
   'scene-hill': '#74B06A',
   'scene-trunk': '#8A5A3B',
-  'scene-leaf': '#4F9E5A',
   'scene-sun': '#FFD166',
   'scene-sun-glow': '#FFB703',
   'scene-raindrop': '#BCD4FF',
