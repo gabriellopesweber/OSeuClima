@@ -25,6 +25,7 @@ const {
   measures,
   category,
   isDay,
+  windSpeed,
   hourly,
   searchTerm,
   searchBusy,
@@ -34,7 +35,7 @@ const {
   search,
 } = useWeather(demoCategory)
 
-useWeatherScene(canvasRef, { category, isDay, reducedMotion })
+useWeatherScene(canvasRef, { category, isDay, wind: windSpeed, reducedMotion })
 
 // Só cidade e condição remontam o cartão: trocar °C/°F muda os números sem
 // reanimar a tela inteira.

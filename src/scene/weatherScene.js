@@ -3,7 +3,6 @@ import {
   BufferGeometry,
   CanvasTexture,
   CircleGeometry,
-  Clock,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -21,11 +20,13 @@ import {
   Scene,
   SphereGeometry,
   SRGBColorSpace,
+  Timer,
   WebGLRenderer,
 } from 'three'
 
 import { approach, dampFactor, isSettled } from './interpolate'
 import { sceneColor, toCssColor } from './themeColor'
+import { windStrength } from './wind'
 
 // A partir do three r155 a intensidade das luzes é física: os valores herdados
 // do protótipo (feito no r128) só reproduzem o mesmo brilho multiplicados por π.
@@ -41,8 +42,13 @@ const NIGHT_SKY_BOTTOM_DARKEN = 0.6
 
 // Velocidade de convergência (1/s). `REDUCED` é alto o bastante para a troca
 // parecer imediata sem virar um corte de um frame só.
-const LAMBDA = { scene: 2.4, sun: 5, particle: 4, gust: 1.1 }
+const LAMBDA = { scene: 2.4, sun: 5, particle: 4, gust: 1.1, wind: 1.6 }
 const LAMBDA_REDUCED = 30
+
+// Como o vento (0..1) se traduz em movimento. A nuvem nunca para de todo:
+// céu parado com nuvem imóvel parece bug, não calmaria.
+const WIND = { cloudBase: 0.35, cloudRange: 2.2, slant: 7, sway: 0.09 }
+const PARTICLE_WRAP_X = 14
 
 // A neblina fica sempre montada: alternar `scene.fog` entre null e Fog força
 // recompilação de shader e trava um frame bem no meio da transição.
@@ -122,11 +128,16 @@ export function createWeatherScene(canvas) {
   const trunkMaterial = track(new MeshStandardMaterial({ color: sceneColor('scene-trunk'), flatShading: true }))
   const leafGeometry = track(new ConeGeometry(0.7, 1.6, 7))
   const leafMaterial = track(new MeshStandardMaterial({ color: sceneColor('scene-leaf'), flatShading: true }))
-  TREES.forEach(([x, y, z]) => {
+  const leaves = []
+  TREES.forEach(([x, y, z], index) => {
     const trunk = new Mesh(trunkGeometry, trunkMaterial)
     trunk.position.set(x, y, z)
     const leaf = new Mesh(leafGeometry, leafMaterial)
     leaf.position.set(x, y + 1.1, z)
+    // Defasagem por árvore: sem ela as três balançam em uníssono e o efeito
+    // deixa de parecer vento para parecer animação.
+    leaf.userData.phase = index * 1.7
+    leaves.push(leaf)
     decor.add(trunk, leaf)
   })
   scene.add(decor)
@@ -192,11 +203,11 @@ export function createWeatherScene(canvas) {
   // mexe só no alvo — quem interpola é o loop.
   const live = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
-    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0,
+    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0, wind: 0,
   }
   const target = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
-    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false,
+    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false, wind: 0,
   }
   const paintedSky = { top: new Color(), bottom: new Color() }
 
@@ -245,6 +256,12 @@ export function createWeatherScene(canvas) {
     if (changed && !reduced) gust = 1
   }
 
+  /** Vento medido, em km/h. Interpola como o resto — trocar de cidade não deve
+   *  fazer as nuvens saltarem de velocidade. */
+  function setWind(kmh) {
+    target.wind = windStrength(kmh)
+  }
+
   function snapToTarget() {
     live.skyTop.copy(target.skyTop)
     live.skyBottom.copy(target.skyBottom)
@@ -255,6 +272,7 @@ export function createWeatherScene(canvas) {
     live.hemi = target.hemi
     live.sun = target.sun
     live.sunPresence = target.sunPresence
+    live.wind = target.wind
     applyParticleMode(target.particleMode)
     live.particleOpacity = PARTICLE_OPACITY[particleMode]
     clouds.forEach((cloud) => { cloud.userData.presence = cloud.userData.target })
@@ -306,6 +324,7 @@ export function createWeatherScene(canvas) {
     live.fog = approach(live.fog, target.fog, lambda, delta)
     live.hemi = approach(live.hemi, target.hemi, lambda, delta)
     live.sun = approach(live.sun, target.sun, lambda, delta)
+    live.wind = approach(live.wind, target.wind, reduced ? LAMBDA_REDUCED : LAMBDA.wind, delta)
 
     const sunLambda = reduced ? LAMBDA_REDUCED : LAMBDA.sun
     live.sunPresence = approach(live.sunPresence, target.sunPresence, sunLambda, delta)
@@ -343,34 +362,52 @@ export function createWeatherScene(canvas) {
     renderer.setSize(width, height, false)
   }
 
-  const clock = new Clock()
+  // `Clock` está deprecado desde o three r183. O `Timer` ainda ganha a Page
+  // Visibility API: em aba oculta ele congela, então voltar não produz um
+  // delta gigante que teleporta nuvem e partícula.
+  const timer = new Timer()
+  timer.connect(document)
   let frameId = null
 
-  function animate() {
+  function animate(timestamp) {
     frameId = requestAnimationFrame(animate)
-    const delta = Math.min(clock.getDelta(), 0.05)
+    timer.update(timestamp)
+    const delta = Math.min(timer.getDelta(), 0.05)
+    const elapsed = timer.getElapsed()
     const speed = reduced ? 0.4 : 1
 
     stepTransition(delta)
     applyLive()
 
-    const drift = speed * (1 + gust * 2)
+    const wind = live.wind
+    const drift = speed * (1 + gust * 2) * (WIND.cloudBase + wind * WIND.cloudRange)
     clouds.forEach((cloud) => {
       cloud.position.x += cloud.userData.speed * delta * drift
       if (cloud.position.x > 16) cloud.position.x = -16
     })
     sun.rotation.y += delta * 0.1
-    sun.position.y += Math.sin(clock.elapsedTime * 0.5) * 0.0015
+    sun.position.y += Math.sin(elapsed * 0.5) * 0.0015
+
+    // Folhagem balança na frequência e na amplitude do vento medido.
+    const swayAmount = wind * WIND.sway * speed
+    leaves.forEach((leaf) => {
+      leaf.rotation.z = Math.sin(elapsed * (1.2 + wind * 2) + leaf.userData.phase) * swayAmount
+    })
 
     const attribute = particleGeometry.attributes.position
     const count = particleGeometry.drawRange.count
     if (count > 0) {
       const array = attribute.array
       const fallSpeed = (particleMode === 'snow' ? 1.6 : 9) * delta * speed
+      // O empurrão lateral é o que inclina a chuva: sem ele, 35 km/h de vento
+      // cai tão a prumo quanto calmaria.
+      const slant = wind * WIND.slant * delta * speed
       for (let i = 0; i < count; i++) {
         const index = i * 3
         array[index + 1] -= fallSpeed
-        if (particleMode === 'snow') array[index] += Math.sin(clock.elapsedTime + i) * 0.004
+        array[index] += slant
+        if (particleMode === 'snow') array[index] += Math.sin(elapsed + i) * 0.004
+        if (array[index] > PARTICLE_WRAP_X) array[index] -= PARTICLE_WRAP_X * 2
         if (array[index + 1] < -1.5) {
           array[index + 1] = 12 + Math.random() * 3
           array[index] = (Math.random() - 0.5) * 28
@@ -403,11 +440,13 @@ export function createWeatherScene(canvas) {
 
   return {
     setWeather,
+    setWind,
     setReducedMotion,
     resize,
     dispose() {
       if (frameId !== null) cancelAnimationFrame(frameId)
       disposables.forEach((item) => item.dispose())
+      timer.dispose()
       skyTexture.dispose()
       renderer.dispose()
     },

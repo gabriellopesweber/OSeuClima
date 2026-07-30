@@ -22,8 +22,8 @@ O que **não** foi adotado: `useAlertManager`/`GlobalAlertStack` (nenhuma mensag
 
 | Composable | Retorna | Usar para |
 |---|---|---|
-| `useWeather(demoCategory)` | `phase`, `isLoading`, `notice`, `place`, `measures`, `category`, `isDay`, `hourly`, `searchTerm`, `searchBusy`, `searchError`, `load()`, `locate()`, `search()` | Todo o estado do clima: carga inicial, geolocalização com fallback para São Paulo, busca por cidade e modo demonstração. Consome `useWeatherService` — não fala com repository direto |
-| `useWeatherScene(canvasRef, { category, isDay, reducedMotion })` | nada (efeito) | Amarrar a cena 3D ao ciclo de vida da view: cria no `onMounted`, reage às refs por `watch`, observa resize e faz `dispose()` no unmount. Única porta de entrada para o Three.js |
+| `useWeather(demoCategory)` | `phase`, `isLoading`, `notice`, `place`, `measures`, `category`, `isDay`, `windSpeed`, `hourly`, `searchTerm`, `searchBusy`, `searchError`, `load()`, `locate()`, `search()` | Todo o estado do clima: carga inicial, geolocalização com fallback para São Paulo, busca por cidade e modo demonstração. Consome `useWeatherService` — não fala com repository direto |
+| `useWeatherScene(canvasRef, { category, isDay, wind, reducedMotion })` | nada (efeito) | Amarrar a cena 3D ao ciclo de vida da view: cria no `onMounted`, reage às refs por `watch`, observa resize e faz `dispose()` no unmount. Única porta de entrada para o Three.js |
 | `useWeatherSettings()` | `units`, `demoCategory`, `reducedMotion` | Preferências da sessão. `reducedMotion` nasce respeitando `prefers-reduced-motion` do sistema |
 
 **São factories, não singletons** — o estado nasce dentro da função, uma instância por montagem da view.

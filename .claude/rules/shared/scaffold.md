@@ -1,6 +1,6 @@
 <!--
   GERADO POR vue-claude-rules — NÃO EDITAR ESTE ARQUIVO.
-  Origem: scaffold/README.md @ v1.7.0
+  Origem: scaffold/README.md @ v1.8.0
   Mudança de princípio → PR em github.com/gabriellopesweber/vue-claude-rules
   Mudança específica do projeto → .claude/rules/project/
 -->

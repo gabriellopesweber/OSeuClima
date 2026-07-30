@@ -2,7 +2,7 @@ import { onBeforeUnmount, onMounted, watch } from 'vue'
 
 import { createWeatherScene } from '@/scene/weatherScene'
 
-export function useWeatherScene(canvasRef, { category, isDay, reducedMotion }) {
+export function useWeatherScene(canvasRef, { category, isDay, wind, reducedMotion }) {
   let scene = null
   let observer = null
 
@@ -15,11 +15,13 @@ export function useWeatherScene(canvasRef, { category, isDay, reducedMotion }) {
     }
     scene.setReducedMotion(reducedMotion.value)
     scene.setWeather(category.value, isDay.value)
+    scene.setWind(wind.value)
     observer = new ResizeObserver(() => scene?.resize())
     observer.observe(canvasRef.value)
   })
 
   watch([category, isDay], ([nextCategory, nextIsDay]) => scene?.setWeather(nextCategory, nextIsDay))
+  watch(wind, (value) => scene?.setWind(value))
   watch(reducedMotion, (value) => scene?.setReducedMotion(value))
 
   onBeforeUnmount(() => {

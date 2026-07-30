@@ -51,7 +51,19 @@ Material de WebGL não aceita classe CSS. `src/scene/themeColor.js` lê o token 
 
 Por que damping e não uma timeline de duração fixa: se o usuário trocar de cenário no meio da transição, o valor apenas passa a convergir para o novo alvo. Não há tween a cancelar nem corte. E o damping é independente de frame-rate — dois passos de `dt/2` dão exatamente o mesmo resultado que um de `dt` (coberto por teste).
 
-Interpolam: as duas cores do céu, chão, nuvens, cor da neblina, densidade da neblina, as duas intensidades de luz, presença do sol e de **cada** nuvem, e a opacidade das partículas.
+Interpolam: as duas cores do céu, chão, nuvens, cor da neblina, densidade da neblina, as duas intensidades de luz, presença do sol e de **cada** nuvem, a opacidade das partículas e o **vento**.
+
+### O vento medido move a cena
+
+`setWind(kmh)` recebe o `windSpeed` da previsão; `src/scene/wind.js` normaliza para 0..1 com teto em 45 km/h (acima disso a cena só ficaria mais rápida, não mais legível). Esse valor dirige três coisas, todas em `WIND`:
+
+| Efeito | Como |
+|---|---|
+| Velocidade das nuvens | multiplicador `cloudBase + vento * cloudRange` — a base existe porque nuvem parada parece bug, não calmaria |
+| Inclinação da chuva/neve | empurrão lateral por frame; sem ele 35 km/h cai tão a prumo quanto calmaria. As partículas dão a volta em `PARTICLE_WRAP_X` |
+| Balanço das folhas | seno com amplitude e frequência do vento, **defasado por árvore** — em uníssono deixa de parecer vento |
+
+Medido em cenários de mesma contagem de nuvens (chuva 22 km/h × tempestade 35 km/h): as nuvens andaram 8 px e 11 px em 600 ms, razão 1,38× contra 1,44× teórica.
 
 Três detalhes que existem por um motivo e não devem ser "simplificados":
 
@@ -75,6 +87,7 @@ O protótipo de origem foi escrito para o Three r128; o projeto usa r185. Duas c
 
 - **Luz é física desde o r155.** As intensidades herdadas só reproduzem o brilho original multiplicadas por π — é o que `LEGACY_LIGHT_SCALE` faz. Remover a constante escurece a cena inteira.
 - **`CanvasTexture` de céu precisa de `colorSpace = SRGBColorSpace`.** Sem isso o gradiente sai dessaturado.
+- **`Clock` está deprecado desde o r183** — a cena usa `Timer`, que além de não avisar no console traz a Page Visibility API (`timer.connect(document)`): em aba oculta ele congela, então voltar não produz um delta gigante que teleporta nuvem e partícula. O `Timer` precisa de `timer.update(timestamp)` uma vez por frame e é descartado no `dispose()`.
 
 O `dispose()` devolve geometrias, materiais, textura e renderer — é para isso que existe a lista `disposables`; ao criar material/geometria novos, registre com `track()`.
 
@@ -156,6 +169,7 @@ Regras locais:
 | `src/composables/weather/test/useWeather.test.js` | Modo demonstração, busca por cidade (sucesso, não encontrada, falha de rede, termo vazio), recorte da faixa horária, fallback de geolocalização |
 | `src/locales/test/messages.test.js` | Todo categoria tem rótulo e tagline; placeholder `{city}` preservado; nenhuma chave vazia |
 | `src/scene/test/interpolate.test.js` | Damping: converge sem passar do alvo, não anda com `dt` zero/negativo, e é independente de frame-rate |
+| `src/scene/test/wind.test.js` | Normalização do vento: cresce, satura no teto, e trata medida ausente/negativa como calmaria em vez de propagar `NaN` para a cena |
 
 O que se mocka é a **borda**: `@/services/weather/useWeatherService` e `vue-i18n` (o `t` devolve a própria chave, então o teste asserta a chave e não sofre com mudança de texto). O repository e o `fetch` nunca são chamados.
 

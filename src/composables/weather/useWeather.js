@@ -53,6 +53,7 @@ export function useWeather(demoCategory) {
   const searchBusy = computed(() => getCityForecast.loading.value)
   const category = computed(() => measures.value.category)
   const isDay = computed(() => measures.value.isDay)
+  const windSpeed = computed(() => measures.value.windSpeed)
 
   const applyForecast = (forecast) => {
     measures.value = toMeasures(forecast)
@@ -161,6 +162,7 @@ export function useWeather(demoCategory) {
     measures,
     category,
     isDay,
+    windSpeed,
     hourly,
     searchTerm,
     searchBusy,
