@@ -1,6 +1,6 @@
 <!--
   GERADO POR vue-claude-rules — NÃO EDITAR ESTE ARQUIVO.
-  Origem: rules/core/tests.md @ v1.4.1
+  Origem: rules/core/tests.md @ v1.5.0
   Mudança de princípio → PR em github.com/gabriellopesweber/vue-claude-rules
   Mudança específica do projeto → .claude/rules/project/
 -->

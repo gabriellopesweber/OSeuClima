@@ -12,8 +12,8 @@
     "lint:fix": "eslint \"./src/**/*.{js,vue}\" --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "rules:sync": "npx -y github:gabriellopesweber/vue-claude-rules#v1.4.1 sync",
-    "rules:check": "npx -y github:gabriellopesweber/vue-claude-rules#v1.4.1 sync --check"
+    "rules:sync": "npx -y github:gabriellopesweber/vue-claude-rules#v1.5.0 sync",
+    "rules:check": "npx -y github:gabriellopesweber/vue-claude-rules#v1.5.0 sync --check"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
@@ -40,23 +40,16 @@
     "vue-eslint-parser": "^10.4.0"
   },
   "claudeRules": {
-    "profile": "spa-full",
     "rules": [
-      "core/dry.md",
-      "core/feedback.md",
-      "core/tests.md",
-      "vue/vue.md",
-      "vue/composables.md",
-      "vue/services.md",
-      "vue/repositories.md",
-      "vuetify/vuetify.md",
-      "i18n/i18n.md"
-    ],
-    "catalogs": [
-      "catalog-ui.md",
-      "catalog-composables.md",
-      "catalog-data.md",
-      "stack.md"
+      "vue",
+      "dry",
+      "vuetify",
+      "feedback",
+      "composables",
+      "services",
+      "repositories",
+      "i18n",
+      "tests"
     ]
   }
 }
