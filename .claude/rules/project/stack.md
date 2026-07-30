@@ -15,36 +15,24 @@ Consequências para quem trabalha aqui:
 
 ## Cores — o tema é a fonte única
 
-Tema único `clima` (`defaultTheme: 'clima'`, `dark: false`), definido em `src/plugins/vuetify.js`, que faz merge sobre o tema `light` do Vuetify.
-
-**Atenção:** o Vuetify 4.0 **não** traz os tokens MD3 que a regra compartilhada cita (`surface-container-*`, `outline-variant`, `secondary-container`). Vale o que está declarado no `colors` deste projeto:
+Tema único `clima` (`defaultTheme: 'clima'`, `dark: false`), definido em `src/plugins/vuetify.js`, que faz merge sobre o tema `light` do Vuetify. Tokens declarados por este projeto, além dos do tema padrão:
 
 | Grupo | Tokens |
 |---|---|
-| Base | `background` (fundo da página), `surface`, `surface-muted`, `surface-track`, `on-surface`, `on-surface-subtle`, `outline-variant`, `primary`, `primary-darken-1`, `error` |
+| Base | `background`, `surface`, `surface-muted`, `on-surface`, `on-surface-muted`, `on-surface-subtle`, `outline-variant`, `primary`, `error` |
 | Acento por condição | `weather-{clear,cloudy,rain,storm,snow,fog}` — dirige o chip do `WeatherSummaryCard` |
 | Cena 3D — por condição | `scene-{condição}-sky-top`, `-sky-bottom`, `-ground`, `-cloud` para as 6 condições, mais `scene-fog-veil` |
 | Cena 3D — fixos | `scene-hill`, `scene-trunk`, `scene-leaf`, `scene-sun`, `scene-sun-glow`, `scene-raindrop`, `scene-snowflake`, `scene-lightning`, `scene-night-bounce` |
 
-O Vuetify gera `on-<token>` automaticamente para cada cor declarada.
+Token que não está nesta tabela nem na lista do tema padrão (`shared/vuetify.md`) **não existe** — vira cor vazia, sem erro.
 
-### Armadilha: os utilitários de texto do Vuetify não servem aqui
+### `background` é escuro aqui, e isso tem consequência
 
-Verificado em runtime neste projeto (Vuetify 4.1):
+`background: #12181F` é o breu atrás do canvas 3D, não uma superfície de conteúdo. Como o `on-background` é derivado por contraste, ele vira **branco** — e `shared/vuetify.md` explica o resto: `text-medium-emphasis` e `text-high-emphasis` derivam de `on-background`, então **saem brancos e somem** sobre os cartões claros desta tela.
 
-- **`.text-on-surface`, `.text-on-background` e afins não existem.** O Vuetify **não** gera utilitário `.text-*` para cor com prefixo `on-`. A classe é ignorada em silêncio e o elemento herda a cor do pai — foi assim que a faixa horária ficou branca sobre branco.
-- **`.text-medium-emphasis` não deriva de `on-surface`** como a regra compartilhada sugere; neste tema resolve para branco a 60%, invisível sobre superfície clara.
-- **`.bg-background` define também `color: on-background`** (branco), e isso vaza para todo descendente que não seja `v-card`.
+Por isso, para texto sobre superfície clara, use as classes de token nu — `on-surface`, `on-surface-muted`, `on-surface-subtle` — e **não** `text-medium-emphasis`. Foi essa troca que deixou a faixa horária branca sobre branco na primeira versão.
 
-Por isso o projeto usa três classes próprias, em `src/styles/main.css`, que leem o token direto:
-
-| Classe | Token | Uso |
-|---|---|---|
-| `.text-ink` | `on-surface` | Texto principal sobre superfície clara |
-| `.text-ink-muted` | `on-surface-muted` | Texto secundário (localização, tagline, rótulo de hora) |
-| `.text-ink-subtle` | `on-surface-subtle` | Rótulos pequenos (Sensação/Umidade/Vento) |
-
-**Não** troque essas classes por `text-medium-emphasis`/`text-on-surface` "para padronizar" — o texto some. As CSS vars (`--v-theme-on-surface`, etc.) existem e funcionam; só os utilitários é que não.
+Pelo mesmo motivo `.weather-page` pinta o fundo por CSS (`background: rgb(var(--v-theme-background))`) em vez de usar a classe `bg-background`: a classe traria junto `color: on-background`, que vazaria branco para todo descendente que não fosse `v-card`.
 
 ### Como a cena 3D consome o tema
 

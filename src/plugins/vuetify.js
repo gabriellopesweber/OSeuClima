@@ -12,13 +12,11 @@ const colors = {
   background: '#12181F',
   surface: '#FFFFFF',
   'surface-muted': '#EEF1F4',
-  'surface-track': '#E3E6EA',
   'on-surface': '#1C1C1C',
   'on-surface-muted': '#7A7A7A',
   'on-surface-subtle': '#9A9A9A',
   'outline-variant': '#EEF0F2',
   primary: '#2F6FB0',
-  'primary-darken-1': '#1C4F85',
   error: '#B3261E',
 
   // Acento por condição do tempo — dirige o chip do cartão.

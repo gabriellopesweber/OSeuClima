@@ -1,6 +1,6 @@
 <!--
   GERADO POR vue-claude-rules — NÃO EDITAR ESTE ARQUIVO.
-  Origem: rules/vue/services.md @ v1.5.0
+  Origem: rules/vue/services.md @ v1.7.0
   Mudança de princípio → PR em github.com/gabriellopesweber/vue-claude-rules
   Mudança específica do projeto → .claude/rules/project/
 -->
