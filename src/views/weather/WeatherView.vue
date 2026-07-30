@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { useWeather } from '@/composables/weather/useWeather'
@@ -36,11 +36,18 @@ const {
 
 useWeatherScene(canvasRef, { category, isDay, reducedMotion })
 
+// Só cidade e condição remontam o cartão: trocar °C/°F muda os números sem
+// reanimar a tela inteira.
+const cardKey = computed(() => `${place.value.city}-${measures.value.category}`)
+
 onMounted(load)
 </script>
 
 <template>
-  <div class="weather-page">
+  <div
+    class="weather-page"
+    :class="{ 'motion-reduced': reducedMotion }"
+  >
     <canvas
       ref="canvasRef"
       class="weather-canvas"
@@ -83,11 +90,17 @@ onMounted(load)
       <div class="overlay-spacer" />
 
       <footer class="overlay-row overlay-footer">
-        <WeatherSummaryCard
-          :place="place"
-          :measures="measures"
-          :units="units"
-        />
+        <Transition
+          name="card-swap"
+          mode="out-in"
+        >
+          <WeatherSummaryCard
+            :key="cardKey"
+            :place="place"
+            :measures="measures"
+            :units="units"
+          />
+        </Transition>
         <WeatherHourlyStrip
           :items="hourly"
           :units="units"
@@ -158,6 +171,26 @@ onMounted(load)
 .brand {
   font-size: 26px;
   text-shadow: 0 2px 12px rgba(var(--v-theme-background), 0.35);
+}
+
+/* `mode="out-in"`: o cartão antigo sai antes de o novo entrar, senão os dois
+   se empilham e a coluna salta de altura no meio da troca. */
+.card-swap-enter-active {
+  transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-swap-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.card-swap-enter-from {
+  opacity: 0;
+  transform: translateY(16px) scale(0.97);
+}
+
+.card-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.99);
 }
 
 .search-error {

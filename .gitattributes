@@ -1,0 +1,13 @@
+# Fim de linha LF na árvore de trabalho, inclusive no Windows.
+#
+# Sem isto, `core.autocrlf=true` reescreve os arquivos para CRLF no checkout,
+# e o `pnpm rules:check` — que compara byte a byte com o que o pacote gera (LF)
+# — passa a acusar os 10 arquivos de .claude/rules/shared/ como divergentes
+# depois de qualquer troca de branch, sem ninguém ter editado nada.
+* text=auto eol=lf
+
+*.png binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary

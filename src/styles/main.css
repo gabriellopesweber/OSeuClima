@@ -24,3 +24,29 @@ body {
   font-family: var(--app-font-display);
   font-weight: 800;
 }
+
+/*
+  Interruptor único de animação, para as duas origens: a preferência do sistema
+  e o switch "Reduzir animações" (que põe .motion-reduced na página). Precisa ser
+  global porque alcança elementos dentro de componentes com <style scoped>.
+  A cena 3D não passa por aqui — ela converge quase instantânea via LAMBDA_REDUCED.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}
+
+.motion-reduced *,
+.motion-reduced *::before,
+.motion-reduced *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+}

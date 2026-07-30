@@ -100,11 +100,12 @@ const stats = computed(() => [
 </template>
 
 <style scoped>
+/* A entrada do cartão é da <Transition> em WeatherView — aqui não há animação
+   própria, senão as duas rodariam juntas a cada troca. */
 .summary-card {
   max-width: 420px;
   border-radius: 28px;
   box-shadow: 0 20px 50px rgba(var(--v-theme-on-surface), 0.25);
-  animation: card-rise 0.5s ease;
 }
 
 .city-name {
@@ -125,24 +126,6 @@ const stats = computed(() => [
   display: flex;
   gap: 18px;
   border-top: 1px solid rgb(var(--v-theme-outline-variant));
-}
-
-@keyframes card-rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .summary-card {
-    animation: none;
-  }
 }
 
 @media (max-width: 599px) {

@@ -38,6 +38,15 @@ Ver `.claude/rules/shared/feedback.md` para *quando* usar cada mecanismo. Neste 
 
 Todos assumem que estão **sobre a cena 3D**: fundo claro semitransparente e sombra generosa. Quem criar outro elemento flutuante deve seguir o mesmo tratamento, senão ele some no céu claro.
 
+### Animação de entrada
+
+Nenhuma lib de animação — `<Transition>`/`<TransitionGroup>` do Vue com CSS dão conta, e a cena 3D anima por conta própria (ver `stack.md`).
+
+- **`WeatherSummaryCard`** entra pela `<Transition name="card-swap" mode="out-in">` da view, com `:key` em cidade+condição. Trocar °C/°F **não** remonta o cartão, de propósito: mudam os números, não a tela. O componente não tem animação própria — se ganhar uma, as duas rodam juntas.
+- **`WeatherHourlyStrip`** é um `<TransitionGroup>` com escalonamento por índice, via `--enter-delay` no `style` de cada item; `.hourly-move` cuida do reposicionamento.
+
+Motion reduzido é global (`.motion-reduced` na página + `prefers-reduced-motion`), aplicado em `src/styles/main.css` — **não** repita media query de motion em componente.
+
 ## Layout da tela
 
 `WeatherView.vue` empilha o `canvas` (cena) e um overlay flex. O overlay tem `pointer-events: none` e **só os filhos diretos das linhas** reativam o clique — se um elemento novo não responder ao mouse, é isso: adicione-o à regra `pointer-events: auto` no `<style scoped>` da view.

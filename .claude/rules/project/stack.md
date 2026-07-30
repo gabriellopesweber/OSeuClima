@@ -38,10 +38,30 @@ Pelo mesmo motivo `.weather-page` pinta o fundo por CSS (`background: rgb(var(--
 
 Material de WebGL não aceita classe CSS. `src/scene/themeColor.js` lê o token na origem (`--v-theme-<token>`, publicado pelo Vuetify como `R,G,B`) e devolve:
 
-- `sceneColor(token)` → `THREE.Color`, para material/luz
-- `sceneCssColor(token, darken)` → string `rgb()`, para o gradiente do céu pintado num `<canvas>` 2D
+- `sceneColor(token, darken)` → `THREE.Color`, para material/luz
+- `toCssColor(color)` → `#rrggbb`, para o gradiente do céu pintado num `<canvas>` 2D
+
+`darken` é aplicado **em sRGB**, não no espaço linear: é assim que o protótipo escurecia o céu à noite, e multiplicar em linear deixaria a noite bem mais escura que o desenho original.
 
 É a mesma abordagem que a regra compartilhada prescreve para alimentar um renderer de canvas a partir do tema. **Cor nova na cena entra como token no `colors`**, nunca como hex no `weatherScene.js`. Token ausente aparece em magenta — é proposital, para a falha ser óbvia.
+
+### A troca de cenário é interpolada, não atribuída
+
+`setWeather()` **não mexe na cena** — ele só reescreve o objeto `target`. Quem interpola é o loop, por damping exponencial (`src/scene/interpolate.js`), convergindo `live` → `target` a cada frame.
+
+Por que damping e não uma timeline de duração fixa: se o usuário trocar de cenário no meio da transição, o valor apenas passa a convergir para o novo alvo. Não há tween a cancelar nem corte. E o damping é independente de frame-rate — dois passos de `dt/2` dão exatamente o mesmo resultado que um de `dt` (coberto por teste).
+
+Interpolam: as duas cores do céu, chão, nuvens, cor da neblina, densidade da neblina, as duas intensidades de luz, presença do sol e de **cada** nuvem, e a opacidade das partículas.
+
+Três detalhes que existem por um motivo e não devem ser "simplificados":
+
+- **A neblina fica sempre montada** (`scene.fog` nunca vira `null`), com `far` distante quando desligada. Alternar entre `null` e `Fog` força recompilação de shader e trava um frame bem no meio da transição.
+- **Partícula só troca de tipo com a anterior invisível** — senão chuva vira neve no ar, no meio da queda.
+- **O céu só é repintado quando a cor se moveu** mais de ~1/512. Abaixo disso a diferença não sobrevive aos 8 bits da textura, e repintar seria upload de textura por frame, para sempre.
+
+Ao adicionar algo que muda com a condição do tempo, ponha em `target` e deixe o `stepTransition` levar — atribuir direto ao objeto do three é o que produz o corte seco que essa camada existe para eliminar.
+
+**Motion reduzido:** a cena usa `LAMBDA_REDUCED` (convergência quase imediata) e desliga a rajada; o DOM é coberto pelo interruptor global em `src/styles/main.css` (`.motion-reduced` + `prefers-reduced-motion`).
 
 ### Adicionar uma condição de tempo
 
@@ -135,12 +155,13 @@ Regras locais:
 | `src/utils/test/weather.test.js` | Mapa WMO → condição (incluindo código desconhecido), conversão de unidade, zero como valor real vs medida ausente, construtores de chave |
 | `src/composables/weather/test/useWeather.test.js` | Modo demonstração, busca por cidade (sucesso, não encontrada, falha de rede, termo vazio), recorte da faixa horária, fallback de geolocalização |
 | `src/locales/test/messages.test.js` | Todo categoria tem rótulo e tagline; placeholder `{city}` preservado; nenhuma chave vazia |
+| `src/scene/test/interpolate.test.js` | Damping: converge sem passar do alvo, não anda com `dt` zero/negativo, e é independente de frame-rate |
 
 O que se mocka é a **borda**: `@/services/weather/useWeatherService` e `vue-i18n` (o `t` devolve a própria chave, então o teste asserta a chave e não sofre com mudança de texto). O repository e o `fetch` nunca são chamados.
 
 **Watcher de composable solto:** `useWeather` usa `watch` com flush `pre` padrão. Ele **não** dispara síncrono, mas flusha num `await nextTick()` — verificado neste projeto, não precisa de componente host. Se um dia precisar de `onMounted`/`provide`, aí sim adote `withSetup` do scaffold com `// @vitest-environment jsdom`.
 
-A cena 3D **não é testada** por unidade: precisa de WebGL. Ela é verificada rodando o app (ver README).
+A cena 3D **não é testada** por unidade: precisa de WebGL. O que dava para isolar — a matemática do damping — foi extraído para `interpolate.js` e testado lá; o resto é verificado rodando o app (ver README).
 
 ## CI
 

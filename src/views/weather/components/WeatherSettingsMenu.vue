@@ -10,12 +10,14 @@ const units = defineModel('units', { type: String, default: 'metric' })
 const demoCategory = defineModel('demoCategory', { type: String, default: 'auto' })
 const reducedMotion = defineModel('reducedMotion', { type: Boolean, default: false })
 
+// `title`/`value`/`props` são as chaves que o VSelect entende sem slot: o
+// `props` de cada item vira atributo do VListItem correspondente.
 const sceneOptions = computed(() => [
-  { value: 'auto', label: t('weather.settings.scene_auto'), icon: 'mdi-crosshairs-gps' },
+  { value: 'auto', title: t('weather.settings.scene_auto'), props: { prependIcon: 'mdi-crosshairs-gps' } },
   ...WEATHER_CATEGORIES.map((category) => ({
     value: category,
-    label: t(conditionLabelKey(category)),
-    icon: WEATHER_ICONS[category],
+    title: t(conditionLabelKey(category)),
+    props: { prependIcon: WEATHER_ICONS[category] },
   })),
 ])
 </script>
@@ -70,19 +72,10 @@ const sceneOptions = computed(() => [
       <v-select
         v-model="demoCategory"
         :items="sceneOptions"
-        item-title="label"
-        item-value="value"
         :label="t('weather.settings.scene')"
         hide-details
         class="mb-2"
-      >
-        <template #item="{ props: item, item: option }">
-          <v-list-item
-            v-bind="item"
-            :prepend-icon="option.raw.icon"
-          />
-        </template>
-      </v-select>
+      />
 
       <v-switch
         v-model="reducedMotion"

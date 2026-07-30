@@ -16,12 +16,15 @@ const readRgb = (token) => {
   return rgb
 }
 
-export const sceneColor = (token) => {
-  const [r, g, b] = readRgb(token)
+/**
+ * `darken` é aplicado sobre os canais em sRGB, não no espaço linear da cena:
+ * é assim que o protótipo escurecia o céu à noite, e multiplicar em linear
+ * deixaria a noite bem mais escura que o desenho original.
+ */
+export const sceneColor = (token, darken = 0) => {
+  const [r, g, b] = readRgb(token).map((channel) => channel * (1 - darken))
   return new Color().setRGB(r / 255, g / 255, b / 255, SRGBColorSpace)
 }
 
-export const sceneCssColor = (token, darken = 0) => {
-  const [r, g, b] = readRgb(token).map((channel) => Math.round(channel * (1 - darken)))
-  return `rgb(${r}, ${g}, ${b})`
-}
+/** Cor viva → string aceita pelo gradiente do `<canvas>` 2D do céu. */
+export const toCssColor = (color) => `#${color.getHexString()}`

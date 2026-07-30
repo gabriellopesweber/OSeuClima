@@ -18,11 +18,16 @@ const slots = computed(() => props.items.map((item) => ({
 </script>
 
 <template>
-  <div class="hourly-strip">
+  <TransitionGroup
+    tag="div"
+    class="hourly-strip"
+    name="hourly"
+  >
     <div
-      v-for="slot in slots"
+      v-for="(slot, index) in slots"
       :key="slot.label"
       class="hourly-slot"
+      :style="{ '--enter-delay': `${index * 60}ms` }"
     >
       <p class="hourly-label on-surface-muted mb-0">
         {{ slot.label }}
@@ -31,7 +36,7 @@ const slots = computed(() => props.items.map((item) => ({
         {{ slot.temperature }}°
       </p>
     </div>
-  </div>
+  </TransitionGroup>
 </template>
 
 <style scoped>
@@ -55,6 +60,32 @@ const slots = computed(() => props.items.map((item) => ({
 
 .hourly-label {
   font-size: 12px;
+}
+
+/* Entra escalonado, da esquerda para a direita, como se a previsão fosse
+   chegando hora a hora. O delay vem do índice, via --enter-delay. */
+.hourly-enter-active {
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  transition-delay: var(--enter-delay, 0ms);
+}
+
+.hourly-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  position: absolute;
+}
+
+.hourly-enter-from {
+  opacity: 0;
+  transform: translateY(14px) scale(0.9);
+}
+
+.hourly-leave-to {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.95);
+}
+
+.hourly-move {
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .hourly-temp {

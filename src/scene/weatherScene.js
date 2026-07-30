@@ -4,6 +4,7 @@ import {
   CanvasTexture,
   CircleGeometry,
   Clock,
+  Color,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
@@ -23,7 +24,8 @@ import {
   WebGLRenderer,
 } from 'three'
 
-import { sceneColor, sceneCssColor } from './themeColor'
+import { approach, dampFactor, isSettled } from './interpolate'
+import { sceneColor, toCssColor } from './themeColor'
 
 // A partir do three r155 a intensidade das luzes é física: os valores herdados
 // do protótipo (feito no r128) só reproduzem o mesmo brilho multiplicados por π.
@@ -36,6 +38,19 @@ const REDUCED_SNOW_PARTICLES = 180
 
 const NIGHT_SKY_TOP_DARKEN = 0.55
 const NIGHT_SKY_BOTTOM_DARKEN = 0.6
+
+// Velocidade de convergência (1/s). `REDUCED` é alto o bastante para a troca
+// parecer imediata sem virar um corte de um frame só.
+const LAMBDA = { scene: 2.4, sun: 5, particle: 4, gust: 1.1 }
+const LAMBDA_REDUCED = 30
+
+// A neblina fica sempre montada: alternar `scene.fog` entre null e Fog força
+// recompilação de shader e trava um frame bem no meio da transição.
+const FOG_NEAR = { off: 60, on: 5 }
+const FOG_FAR = { off: 400, on: 24 }
+
+const PARTICLE_OPACITY = { none: 0, rain: 0.7, snow: 0.9 }
+const PARTICLE_SIZE = { rain: 0.05, snow: 0.14 }
 
 const PALETTES = {
   clear: { sky: 'scene-clear', ground: 'scene-clear-ground', cloud: 'scene-clear-cloud', particle: 'none', veil: null, sun: true, cloudCount: 2 },
@@ -69,8 +84,8 @@ export function createWeatherScene(canvas) {
 
   const paintSky = (top, bottom) => {
     const gradient = skyContext.createLinearGradient(0, 0, 0, skyCanvas.height)
-    gradient.addColorStop(0, top)
-    gradient.addColorStop(1, bottom)
+    gradient.addColorStop(0, toCssColor(top))
+    gradient.addColorStop(1, toCssColor(bottom))
     skyContext.fillStyle = gradient
     skyContext.fillRect(0, 0, skyCanvas.width, skyCanvas.height)
     skyTexture.needsUpdate = true
@@ -140,78 +155,183 @@ export function createWeatherScene(canvas) {
       cloud.add(puff)
     })
     cloud.position.set((Math.random() - 0.5) * 26, 3.5 + Math.random() * 3.5, -5 - Math.random() * 8)
-    cloud.scale.setScalar(0.7 + Math.random() * 0.9)
+    cloud.userData.baseScale = 0.7 + Math.random() * 0.9
     cloud.userData.speed = 0.12 + Math.random() * 0.18
+    cloud.userData.presence = 0
     scene.add(cloud)
     clouds.push(cloud)
   }
 
   const particleGeometry = track(new BufferGeometry())
   const positions = new Float32Array(MAX_PARTICLES * 3)
-  for (let i = 0; i < MAX_PARTICLES; i++) {
-    positions[i * 3] = (Math.random() - 0.5) * 28
-    positions[i * 3 + 1] = Math.random() * 14 - 1
-    positions[i * 3 + 2] = -10 + Math.random() * 18
+  const scatterParticle = (index) => {
+    positions[index * 3] = (Math.random() - 0.5) * 28
+    positions[index * 3 + 1] = Math.random() * 14 - 1
+    positions[index * 3 + 2] = -10 + Math.random() * 18
   }
+  for (let i = 0; i < MAX_PARTICLES; i++) scatterParticle(i)
   particleGeometry.setAttribute('position', new BufferAttribute(positions, 3))
   particleGeometry.setDrawRange(0, 0)
-  const particleMaterial = track(new PointsMaterial({ size: 0.08, transparent: true, opacity: 0.85, sizeAttenuation: true }))
+  const particleMaterial = track(new PointsMaterial({ size: 0.08, transparent: true, opacity: 0, sizeAttenuation: true }))
   scene.add(new Points(particleGeometry, particleMaterial))
 
   const lightningLight = new PointLight(sceneColor('scene-lightning'), 0, 40, 2)
   lightningLight.position.set(0, 10, -4)
   scene.add(lightningLight)
 
+  scene.fog = new Fog(sceneColor('scene-fog-veil'), FOG_NEAR.off, FOG_FAR.off)
+
   let lightningTimer = 0
-  let lightningActive = false
   let category = 'clear'
   let isDay = true
   let reduced = false
   let particleMode = 'none'
+  let gust = 0
+
+  // Estado vivo da cena e o alvo para onde ele converge. Todo `setWeather`
+  // mexe só no alvo — quem interpola é o loop.
+  const live = {
+    skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
+    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0,
+  }
+  const target = {
+    skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
+    fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false,
+  }
+  const paintedSky = { top: new Color(), bottom: new Color() }
+
+  const particleCount = (mode) => {
+    if (mode === 'rain') return reduced ? REDUCED_RAIN_PARTICLES : MAX_PARTICLES
+    if (mode === 'snow') return reduced ? REDUCED_SNOW_PARTICLES : SNOW_PARTICLES
+    return 0
+  }
+
+  const applyParticleMode = (mode) => {
+    particleMode = mode
+    if (mode === 'none') {
+      particleGeometry.setDrawRange(0, 0)
+      return
+    }
+    particleMaterial.color.copy(sceneColor(mode === 'rain' ? 'scene-raindrop' : 'scene-snowflake'))
+    particleMaterial.size = PARTICLE_SIZE[mode]
+    const count = particleCount(mode)
+    for (let i = 0; i < count; i++) scatterParticle(i)
+    particleGeometry.attributes.position.needsUpdate = true
+    particleGeometry.setDrawRange(0, count)
+  }
 
   function setWeather(nextCategory, dayFlag) {
+    const changed = nextCategory !== category || dayFlag !== isDay
     category = PALETTES[nextCategory] ? nextCategory : 'clear'
     isDay = dayFlag !== false
     const palette = PALETTES[category]
 
-    paintSky(
-      sceneCssColor(`${palette.sky}-sky-top`, isDay ? 0 : NIGHT_SKY_TOP_DARKEN),
-      sceneCssColor(`${palette.sky}-sky-bottom`, isDay ? 0 : NIGHT_SKY_BOTTOM_DARKEN),
-    )
-    hemisphere.intensity = (isDay ? 1 : 0.3) * LEGACY_LIGHT_SCALE
-    sunLight.intensity = (isDay ? 1.2 : 0.15) * LEGACY_LIGHT_SCALE
+    target.skyTop.copy(sceneColor(`${palette.sky}-sky-top`, isDay ? 0 : NIGHT_SKY_TOP_DARKEN))
+    target.skyBottom.copy(sceneColor(`${palette.sky}-sky-bottom`, isDay ? 0 : NIGHT_SKY_BOTTOM_DARKEN))
+    target.ground.copy(sceneColor(palette.ground))
+    target.cloud.copy(sceneColor(palette.cloud))
+    if (palette.veil) target.veil.copy(sceneColor(palette.veil))
+    target.fog = palette.veil ? 1 : 0
+    target.hemi = (isDay ? 1 : 0.3) * LEGACY_LIGHT_SCALE
+    target.sun = (isDay ? 1.2 : 0.15) * LEGACY_LIGHT_SCALE
+    target.sunPresence = palette.sun && isDay ? 1 : 0
+    target.particleMode = palette.particle
+    target.lightning = !!palette.lightning
 
-    groundMaterial.color.copy(sceneColor(palette.ground))
-    const cloudColor = sceneColor(palette.cloud)
-    clouds.forEach((cloud, index) => {
-      cloud.visible = index < palette.cloudCount
-      cloud.children.forEach((puff) => puff.material.color.copy(cloudColor))
+    clouds.forEach((cloud, index) => { cloud.userData.target = index < palette.cloudCount ? 1 : 0 })
+
+    // Rajada: as nuvens aceleram e desaceleram, para a mudança parecer que o
+    // tempo "chegou" em vez de ter sido trocado.
+    if (changed && !reduced) gust = 1
+  }
+
+  function snapToTarget() {
+    live.skyTop.copy(target.skyTop)
+    live.skyBottom.copy(target.skyBottom)
+    live.ground.copy(target.ground)
+    live.cloud.copy(target.cloud)
+    live.veil.copy(target.veil)
+    live.fog = target.fog
+    live.hemi = target.hemi
+    live.sun = target.sun
+    live.sunPresence = target.sunPresence
+    applyParticleMode(target.particleMode)
+    live.particleOpacity = PARTICLE_OPACITY[particleMode]
+    clouds.forEach((cloud) => { cloud.userData.presence = cloud.userData.target })
+    gust = 0
+  }
+
+  // Abaixo de 1/512 a diferença não sobrevive aos 8 bits da textura: repintar
+  // aí seria upload de textura por frame para sempre, sem mudar um pixel.
+  const colorMoved = (a, b) =>
+    Math.abs(a.r - b.r) > 0.002 || Math.abs(a.g - b.g) > 0.002 || Math.abs(a.b - b.b) > 0.002
+
+  function applyLive() {
+    if (colorMoved(live.skyTop, paintedSky.top) || colorMoved(live.skyBottom, paintedSky.bottom)) {
+      paintSky(live.skyTop, live.skyBottom)
+      paintedSky.top.copy(live.skyTop)
+      paintedSky.bottom.copy(live.skyBottom)
+    }
+    groundMaterial.color.copy(live.ground)
+    clouds.forEach((cloud) => {
+      const presence = cloud.userData.presence
+      cloud.visible = presence > 0.01
+      cloud.scale.setScalar(cloud.userData.baseScale * presence)
+      cloud.children.forEach((puff) => puff.material.color.copy(live.cloud))
+    })
+    hemisphere.intensity = live.hemi
+    sunLight.intensity = live.sun
+    sun.visible = live.sunPresence > 0.01
+    sun.scale.setScalar(live.sunPresence)
+    scene.fog.color.copy(live.veil)
+    scene.fog.near = FOG_NEAR.off + (FOG_NEAR.on - FOG_NEAR.off) * live.fog
+    scene.fog.far = FOG_FAR.off + (FOG_FAR.on - FOG_FAR.off) * live.fog
+    particleMaterial.opacity = live.particleOpacity
+  }
+
+  function stepTransition(delta) {
+    const lambda = reduced ? LAMBDA_REDUCED : LAMBDA.scene
+    const blend = dampFactor(lambda, delta)
+
+    live.skyTop.lerp(target.skyTop, blend)
+    live.skyBottom.lerp(target.skyBottom, blend)
+    live.ground.lerp(target.ground, blend)
+    live.cloud.lerp(target.cloud, blend)
+    // Com a neblina ainda invisível a cor viva não importa; copiá-la evita que
+    // ela entre partindo do preto e escureça a cena no começo da transição.
+    if (target.fog > 0) {
+      if (live.fog < 0.02) live.veil.copy(target.veil)
+      else live.veil.lerp(target.veil, blend)
+    }
+    live.fog = approach(live.fog, target.fog, lambda, delta)
+    live.hemi = approach(live.hemi, target.hemi, lambda, delta)
+    live.sun = approach(live.sun, target.sun, lambda, delta)
+
+    const sunLambda = reduced ? LAMBDA_REDUCED : LAMBDA.sun
+    live.sunPresence = approach(live.sunPresence, target.sunPresence, sunLambda, delta)
+
+    clouds.forEach((cloud) => {
+      cloud.userData.presence = approach(cloud.userData.presence, cloud.userData.target, lambda, delta)
     })
 
-    sun.visible = palette.sun && isDay
-    scene.fog = palette.veil ? new Fog(sceneColor(palette.veil), 5, 24) : null
+    // Troca de tipo de partícula só acontece com a anterior já invisível —
+    // senão chuva viraria neve no ar, no meio da queda.
+    const particleLambda = reduced ? LAMBDA_REDUCED : LAMBDA.particle
+    const wantsSwap = particleMode !== target.particleMode
+    const wanted = wantsSwap ? 0 : PARTICLE_OPACITY[particleMode]
+    live.particleOpacity = approach(live.particleOpacity, wanted, particleLambda, delta)
+    if (wantsSwap && live.particleOpacity < 0.02) applyParticleMode(target.particleMode)
 
-    particleMode = palette.particle
-    if (particleMode === 'rain') {
-      particleMaterial.color.copy(sceneColor('scene-raindrop'))
-      particleMaterial.size = 0.05
-      particleMaterial.opacity = 0.7
-      particleGeometry.setDrawRange(0, reduced ? REDUCED_RAIN_PARTICLES : MAX_PARTICLES)
-    } else if (particleMode === 'snow') {
-      particleMaterial.color.copy(sceneColor('scene-snowflake'))
-      particleMaterial.size = 0.14
-      particleMaterial.opacity = 0.9
-      particleGeometry.setDrawRange(0, reduced ? REDUCED_SNOW_PARTICLES : SNOW_PARTICLES)
-    } else {
-      particleGeometry.setDrawRange(0, 0)
+    if (gust > 0) {
+      gust = approach(gust, 0, LAMBDA.gust, delta)
+      if (isSettled(gust, 0, 0.01)) gust = 0
     }
-
-    lightningActive = !!palette.lightning
   }
 
   function setReducedMotion(value) {
     reduced = !!value
     setWeather(category, isDay)
+    applyParticleMode(target.particleMode)
   }
 
   function resize() {
@@ -231,8 +351,12 @@ export function createWeatherScene(canvas) {
     const delta = Math.min(clock.getDelta(), 0.05)
     const speed = reduced ? 0.4 : 1
 
+    stepTransition(delta)
+    applyLive()
+
+    const drift = speed * (1 + gust * 2)
     clouds.forEach((cloud) => {
-      cloud.position.x += cloud.userData.speed * delta * speed
+      cloud.position.x += cloud.userData.speed * delta * drift
       if (cloud.position.x > 16) cloud.position.x = -16
     })
     sun.rotation.y += delta * 0.1
@@ -256,7 +380,7 @@ export function createWeatherScene(canvas) {
       attribute.needsUpdate = true
     }
 
-    if (lightningActive) {
+    if (target.lightning) {
       lightningTimer -= delta
       if (lightningTimer <= 0 && Math.random() < 0.01) {
         lightningLight.intensity = (6 + Math.random() * 4) * LEGACY_LIGHT_SCALE
@@ -265,7 +389,7 @@ export function createWeatherScene(canvas) {
         lightningLight.intensity = Math.max(0, lightningLight.intensity - delta * 20 * LEGACY_LIGHT_SCALE)
       }
     } else if (lightningLight.intensity > 0) {
-      lightningLight.intensity = 0
+      lightningLight.intensity = Math.max(0, lightningLight.intensity - delta * 20 * LEGACY_LIGHT_SCALE)
     }
 
     renderer.render(scene, camera)
@@ -273,6 +397,8 @@ export function createWeatherScene(canvas) {
 
   resize()
   setWeather(category, isDay)
+  snapToTarget()
+  applyLive()
   animate()
 
   return {
