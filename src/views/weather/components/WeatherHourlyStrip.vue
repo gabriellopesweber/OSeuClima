@@ -46,11 +46,20 @@ const slots = computed(() => props.items.map((item) => ({
   overflow-x: auto;
   max-width: 520px;
   padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+/* No toque a barra não aparece, então ela não serve de affordance — o snap é
+   o que sinaliza que a faixa rola. */
+.hourly-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .hourly-slot {
   flex: 0 0 auto;
   min-width: 64px;
+  scroll-snap-align: start;
   background: rgba(var(--v-theme-surface), 0.92);
   text-align: center;
   border-radius: 16px;
@@ -96,6 +105,19 @@ const slots = computed(() => props.items.map((item) => ({
   .hourly-strip {
     max-width: none;
     width: 100%;
+  }
+}
+
+/* Deitado o cartão fica ao lado, então a faixa divide a largura com ele. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hourly-strip {
+    max-width: 50%;
+    margin-left: auto;
+  }
+
+  .hourly-slot {
+    min-width: 56px;
+    padding: 10px 12px;
   }
 }
 </style>

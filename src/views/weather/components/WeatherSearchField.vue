@@ -29,10 +29,15 @@ const emit = defineEmits(['search'])
       color="primary"
       variant="flat"
       rounded="pill"
-      class="font-weight-bold px-5"
+      class="search-submit font-weight-bold"
       :loading="busy"
+      :aria-label="t('common.search')"
     >
-      {{ t('common.search') }}
+      <v-icon
+        class="search-submit-icon"
+        icon="mdi-magnify"
+      />
+      <span class="search-submit-label">{{ t('common.search') }}</span>
     </v-btn>
   </form>
 </template>
@@ -60,6 +65,14 @@ const emit = defineEmits(['search'])
   cursor: pointer;
 }
 
+.search-submit {
+  padding-inline: 20px;
+}
+
+.search-submit-icon {
+  display: none;
+}
+
 @media (max-width: 599px) {
   .search-input {
     width: 100%;
@@ -67,6 +80,23 @@ const emit = defineEmits(['search'])
 
   .search-pill {
     flex: 1 1 auto;
+    padding-left: 14px;
+  }
+
+  /* Com a marca na mesma linha sobram ~176px para a pílula, e o rótulo
+     "Buscar" come tanto que o placeholder aparecia cortado em "Busca".
+     O ícone devolve ~55px ao campo. */
+  .search-submit {
+    padding-inline: 12px;
+    min-width: 0;
+  }
+
+  .search-submit-icon {
+    display: inline-flex;
+  }
+
+  .search-submit-label {
+    display: none;
   }
 }
 </style>

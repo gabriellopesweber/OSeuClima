@@ -108,6 +108,29 @@ O protótipo de origem foi escrito para o Three r128; o projeto usa r185. Duas c
 
 O `dispose()` devolve geometrias, materiais, textura e renderer — é para isso que existe a lista `disposables`; ao criar material/geometria novos, registre com `track()`.
 
+- **`squeeze` é declarado no topo da fábrica, antes de tudo que o consome.** `scatterParticle` e a criação das nuvens rodam ainda na montagem; um `let` mais abaixo dá `ReferenceError` por temporal dead zone. Como o `useWeatherScene` envolve a criação num `try/catch`, o sintoma não é um erro — é a **cena preta**, com o canvas parado no tamanho padrão de 300×150. Foi exatamente assim que quebrou uma vez. O `catch` agora faz `console.error`, que é o que separa "não tem WebGL" de "tem bug".
+
+### Enquadramento por aspecto — o que faz a cena existir no celular
+
+O FOV vertical é fixo, então o horizontal encolhe com o aspecto. Sem tratamento, num celular em pé ele cai de 78° para 22° e **nenhuma árvore ou colina entra no quadro** — sobra chão e céu vazios.
+
+Nenhuma alavanca isolada resolve: manter o FOV horizontal exigiria ~120° verticais (distorção grotesca), e afastar só a câmera exigiria z≈38 (o cenário vira miniatura). Por isso são duas, ambas em `frameForAspect()`, chamada do `resize()` — que já está no `ResizeObserver`, então girar o aparelho passa por ali:
+
+| Alavanca | De → até (paisagem → retrato) |
+|---|---|
+| FOV vertical | 45° → 56° |
+| Distância da câmera (`z`) | 11 → 13,5 |
+| Altura do alvo (`targetY`) | 1,5 → 0,5 — inclina para baixo, sobe o horizonte e deixa as árvores acima do cartão |
+| `squeeze` | 1 → 0,38 |
+
+**`squeeze` mexe em `position.x`, nunca em `scale`.** Escalar o grupo `decor` no eixo x achataria a geometria das árvores junto — elas ficariam finas. O x original mora em `userData.baseX`, e é o que permite reaplicar a cada resize sem acumular erro. O espalhamento e o wrap das nuvens e das partículas acompanham o mesmo fator, senão a chuva cairia quase toda fora do quadro.
+
+### Orçamento de GPU, separado de `reducedMotion`
+
+São gatilhos diferentes que cortam a mesma coisa e **não podem ser fundidos**: `reducedMotion` é acessibilidade e desacelera a cena (`speed = 0.4`); reusá-lo para desempenho deixaria o celular em câmera lenta.
+
+O tier baixo (`lowPower`) sai de `min(largura, altura) <= 620` ou `dpr >= 2` e corta contagem de partículas (reusando as constantes `REDUCED_*`) e `setPixelRatio` para 1,5. O `antialias` é decidido junto — `dpr < 2` —, e só ali: **não é ajustável depois da construção do renderer**.
+
 ## Prefixo de persistência
 
 **Nenhuma chave persistida** — não há `localStorage`/`sessionStorage` no `src/`. As preferências (unidade, cenário, animações reduzidas) vivem só na sessão, em `useWeatherSettings`.

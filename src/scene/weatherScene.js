@@ -52,6 +52,27 @@ const LAMBDA_REDUCED = 30
 const WIND = { cloudBase: 0.35, cloudRange: 2.2, slant: 7, sway: 0.09 }
 const PARTICLE_WRAP_X = 14
 
+/**
+ * O FOV vertical é fixo, então o horizontal encolhe junto com o aspecto: num
+ * celular em pé (0,46) ele cai de 78° para 22°, e árvores e colinas ficam
+ * inteiramente fora do quadro.
+ *
+ * Abrir só o FOV exigiria ~120° verticais (distorção grotesca) e afastar só a
+ * câmera exigiria z≈38 (o cenário vira miniatura). Por isso são duas alavancas:
+ * um enquadramento por aspecto **e** um `squeeze` que aproxima os elementos do
+ * centro. `targetY` mais baixo inclina a câmera para baixo e sobe o horizonte,
+ * deixando o topo do quadro — a parte que a UI não cobre — com cena.
+ */
+const FRAMING = {
+  landscape: { aspect: 1.4, fov: 45, z: 11, targetY: 1.5, squeeze: 1 },
+  portrait: { aspect: 0.62, fov: 56, z: 13.5, targetY: 0.5, squeeze: 0.38 },
+}
+
+const CLOUD_SPREAD_X = 26
+const CLOUD_WRAP_X = 16
+
+const mix = (from, to, t) => from + (to - from) * t
+
 // A neblina fica sempre montada: alternar `scene.fog` entre null e Fog força
 // recompilação de shader e trava um frame bem no meio da transição.
 const FOG_NEAR = { off: 60, on: 5 }
@@ -77,8 +98,17 @@ const TREES = [[-4, -0.4, 2], [4.5, -0.5, 1], [2, -0.3, 3.5]]
 const CLOUD_PUFFS = [[0, 0, 0, 1], [0.8, 0.12, 0, 0.8], [-0.8, 0.08, 0, 0.75], [0.35, 0.4, 0, 0.6], [-0.35, 0.35, 0, 0.55]]
 
 export function createWeatherScene(canvas) {
-  const renderer = new WebGLRenderer({ canvas, antialias: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  // Orçamento de desempenho, **separado** de `reducedMotion`: aquilo é
+  // acessibilidade e desacelera a cena; isto é só custo de GPU e não deve
+  // deixar o cenário em câmera lenta no celular.
+  const dpr = window.devicePixelRatio || 1
+  const smallViewport = Math.min(window.innerWidth, window.innerHeight) <= 620
+  const lowPower = smallViewport || dpr >= 2
+
+  // `antialias` só pode ser decidido na construção. Com dpr alto o próprio
+  // downsampling já esconde o serrilhado, e MSAA é caro em GPU móvel.
+  const renderer = new WebGLRenderer({ canvas, antialias: dpr < 2 })
+  renderer.setPixelRatio(Math.min(dpr, lowPower ? 1.5 : 2))
 
   const scene = new Scene()
   const camera = new PerspectiveCamera(45, (canvas.clientWidth || 1) / (canvas.clientHeight || 1), 0.1, 100)
@@ -109,6 +139,12 @@ export function createWeatherScene(canvas) {
   sunLight.position.set(6, 9, 4)
   scene.add(sunLight)
 
+  // Declarado antes de tudo que o consome: `scatterParticle` e a criação das
+  // nuvens rodam ainda na montagem, e um `let` mais abaixo daria ReferenceError
+  // por temporal dead zone — engolido pelo try/catch de useWeatherScene, o que
+  // deixaria a cena morta sem nenhum erro no console.
+  let squeeze = 1
+
   const disposables = []
   const track = (...items) => { disposables.push(...items); return items[0] }
 
@@ -120,12 +156,18 @@ export function createWeatherScene(canvas) {
   scene.add(ground)
 
   const decor = new Group()
+  // O `squeeze` reposiciona estes meshes no eixo x. Guardar o x original é o
+  // que permite reaplicar a cada resize sem acumular erro — e tem que ser
+  // `position`, nunca `scale`: escalar o grupo achataria a geometria junto.
+  const squeezable = []
   const hillGeometry = track(new SphereGeometry(1, 10, 8))
   const hillMaterial = track(new MeshStandardMaterial({ color: sceneColor('scene-hill'), flatShading: true, roughness: 1 }))
   HILLS.forEach(([x, y, z, size]) => {
     const hill = new Mesh(hillGeometry, hillMaterial)
     hill.position.set(x, y, z)
     hill.scale.set(size, size * 0.6, size)
+    hill.userData.baseX = x
+    squeezable.push(hill)
     decor.add(hill)
   })
 
@@ -143,6 +185,9 @@ export function createWeatherScene(canvas) {
     // deixa de parecer vento para parecer animação.
     leaf.userData.phase = index * 1.7
     leaves.push(leaf)
+    trunk.userData.baseX = x
+    leaf.userData.baseX = x
+    squeezable.push(trunk, leaf)
     decor.add(trunk, leaf)
   })
   scene.add(decor)
@@ -170,7 +215,7 @@ export function createWeatherScene(canvas) {
       puff.scale.setScalar(size)
       cloud.add(puff)
     })
-    cloud.position.set((Math.random() - 0.5) * 26, 3.5 + Math.random() * 3.5, -5 - Math.random() * 8)
+    cloud.position.set((Math.random() - 0.5) * CLOUD_SPREAD_X, 3.5 + Math.random() * 3.5, -5 - Math.random() * 8)
     cloud.userData.baseScale = 0.7 + Math.random() * 0.9
     cloud.userData.speed = 0.12 + Math.random() * 0.18
     cloud.userData.presence = 0
@@ -180,8 +225,10 @@ export function createWeatherScene(canvas) {
 
   const particleGeometry = track(new BufferGeometry())
   const positions = new Float32Array(MAX_PARTICLES * 3)
+  // A faixa horizontal também acompanha o `squeeze`: em retrato, espalhar
+  // chuva por 28 unidades jogaria quase toda ela fora do quadro.
   const scatterParticle = (index) => {
-    positions[index * 3] = (Math.random() - 0.5) * 28
+    positions[index * 3] = (Math.random() - 0.5) * PARTICLE_WRAP_X * 2 * squeeze
     positions[index * 3 + 1] = Math.random() * 14 - 1
     positions[index * 3 + 2] = -10 + Math.random() * 18
   }
@@ -217,9 +264,12 @@ export function createWeatherScene(canvas) {
   }
   const paintedSky = { top: new Color(), bottom: new Color() }
 
+  // Contagem cortada tanto por acessibilidade quanto por orçamento de GPU —
+  // são gatilhos diferentes que chegam ao mesmo lugar.
   const particleCount = (mode) => {
-    if (mode === 'rain') return reduced ? REDUCED_RAIN_PARTICLES : MAX_PARTICLES
-    if (mode === 'snow') return reduced ? REDUCED_SNOW_PARTICLES : SNOW_PARTICLES
+    const lean = reduced || lowPower
+    if (mode === 'rain') return lean ? REDUCED_RAIN_PARTICLES : MAX_PARTICLES
+    if (mode === 'snow') return lean ? REDUCED_SNOW_PARTICLES : SNOW_PARTICLES
     return 0
   }
 
@@ -383,11 +433,35 @@ export function createWeatherScene(canvas) {
     applyParticleMode(target.particleMode)
   }
 
+  /**
+   * Reenquadra e recompõe para o aspecto atual. Chamado do `resize()`, que já
+   * está ligado ao `ResizeObserver` — então girar o aparelho já passa por aqui.
+   */
+  function frameForAspect(aspect) {
+    const { landscape, portrait } = FRAMING
+    const t = Math.min(Math.max((landscape.aspect - aspect) / (landscape.aspect - portrait.aspect), 0), 1)
+
+    camera.fov = mix(landscape.fov, portrait.fov, t)
+    camera.position.z = mix(landscape.z, portrait.z, t)
+    camera.lookAt(0, mix(landscape.targetY, portrait.targetY, t), 0)
+
+    const nextSqueeze = mix(landscape.squeeze, portrait.squeeze, t)
+    if (nextSqueeze !== squeeze) {
+      // As nuvens estão em movimento: reescalar a posição atual mantém a
+      // distribuição em vez de teleportá-las todas para o centro.
+      const ratio = nextSqueeze / squeeze
+      clouds.forEach((cloud) => { cloud.position.x *= ratio })
+      squeeze = nextSqueeze
+      squeezable.forEach((mesh) => { mesh.position.x = mesh.userData.baseX * squeeze })
+    }
+  }
+
   function resize() {
     const width = canvas.clientWidth || window.innerWidth
     const height = canvas.clientHeight || window.innerHeight
     if (!width || !height) return
     camera.aspect = width / height
+    frameForAspect(camera.aspect)
     camera.updateProjectionMatrix()
     renderer.setSize(width, height, false)
   }
@@ -411,9 +485,10 @@ export function createWeatherScene(canvas) {
 
     const wind = live.wind
     const drift = speed * (1 + gust * 2) * (WIND.cloudBase + wind * WIND.cloudRange)
+    const wrapX = CLOUD_WRAP_X * squeeze
     clouds.forEach((cloud) => {
       cloud.position.x += cloud.userData.speed * delta * drift
-      if (cloud.position.x > 16) cloud.position.x = -16
+      if (cloud.position.x > wrapX) cloud.position.x = -wrapX
     })
     sun.rotation.y += delta * 0.1
     sun.position.y += Math.sin(elapsed * 0.5) * 0.0015
@@ -432,15 +507,16 @@ export function createWeatherScene(canvas) {
       // O empurrão lateral é o que inclina a chuva: sem ele, 35 km/h de vento
       // cai tão a prumo quanto calmaria.
       const slant = wind * WIND.slant * delta * speed
+      const particleEdge = PARTICLE_WRAP_X * squeeze
       for (let i = 0; i < count; i++) {
         const index = i * 3
         array[index + 1] -= fallSpeed
         array[index] += slant
         if (particleMode === 'snow') array[index] += Math.sin(elapsed + i) * 0.004
-        if (array[index] > PARTICLE_WRAP_X) array[index] -= PARTICLE_WRAP_X * 2
+        if (array[index] > particleEdge) array[index] -= particleEdge * 2
         if (array[index + 1] < -1.5) {
           array[index + 1] = 12 + Math.random() * 3
-          array[index] = (Math.random() - 0.5) * 28
+          array[index] = (Math.random() - 0.5) * particleEdge * 2
           array[index + 2] = -10 + Math.random() * 18
         }
       }

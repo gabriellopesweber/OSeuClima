@@ -10,8 +10,12 @@ export function useWeatherScene(canvasRef, { category, isDay, wind, season, redu
     if (!canvasRef.value) return
     try {
       scene = createWeatherScene(canvasRef.value)
-    } catch {
-      return // Sem WebGL o cenário some, mas a leitura do clima continua de pé.
+    } catch (error) {
+      // Sem WebGL o cenário some e a leitura do clima continua de pé. O log
+      // existe porque um erro de código cai neste mesmo catch, e sem ele o
+      // sintoma seria uma cena preta sem nenhuma pista de onde procurar.
+      console.error('[cena] não foi possível iniciar o cenário 3D:', error)
+      return
     }
     scene.setReducedMotion(reducedMotion.value)
     scene.setSeason(season.value)

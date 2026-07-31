@@ -59,8 +59,7 @@ const sceneOptions = computed(() => [
     </template>
 
     <v-card
-      width="272"
-      class="pa-4"
+      class="settings-card pa-4"
     >
       <p class="text-caption on-surface-muted mb-2">
         {{ t('weather.settings.units') }}
@@ -117,5 +116,19 @@ const sceneOptions = computed(() => [
 <style scoped>
 .settings-trigger {
   box-shadow: 0 8px 24px rgba(var(--v-theme-on-surface), 0.18);
+}
+
+/* Largura fixa não cabe num aparelho de 320px depois do padding do overlay. */
+.settings-card {
+  width: min(272px, calc(100vw - 32px));
+}
+
+/* `size="small"` dá 32px, abaixo do mínimo de toque. Só sobe onde o ponteiro
+   é grosso — no mouse os 32px estão certos. */
+@media (pointer: coarse) {
+  .settings-trigger {
+    width: 44px;
+    height: 44px;
+  }
 }
 </style>

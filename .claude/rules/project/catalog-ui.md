@@ -47,6 +47,23 @@ Nenhuma lib de animação — `<Transition>`/`<TransitionGroup>` do Vue com CSS 
 
 Motion reduzido é global (`.motion-reduced` na página + `prefers-reduced-motion`), aplicado em `src/styles/main.css` — **não** repita media query de motion em componente.
 
+## Responsivo — media query CSS, não `useDisplay()`
+
+Divergência deliberada de `shared/vuetify.md`, que manda usar `useDisplay()`. Os dois casos que decidem este layout **não têm breakpoint no Vuetify**: `(orientation: landscape) and (max-height: 500px)` e `(pointer: coarse)`. Além disso o CSS responde à rotação sem passar por reatividade. Ao mexer no layout, siga por CSS.
+
+Os três recortes em uso:
+
+| Recorte | Para quê |
+|---|---|
+| `max-width: 599px` | Cartão compacto, cabeçalho numa linha, botão de busca vira ícone |
+| `(orientation: landscape) and (max-height: 500px)` | Celular deitado: cartão e faixa lado a lado, como no desktop |
+| `(pointer: coarse)` | Alvo de toque de 44px no gatilho de preferências |
+
+Duas armadilhas já pagas:
+
+- **`.overlay-row` é do cabeçalho *e* do rodapé.** A regra de `flex-wrap: nowrap` do retrato precisa do `:not(.overlay-footer)`; sem ele o cartão para de ocupar a largura toda e divide a linha com a faixa horária.
+- **O cartão compacto some com tagline e localização** e põe as três métricas numa linha — é o que libera os ~180px devolvidos à cena. Se voltar a mostrá-las no retrato, a cena encolhe junto.
+
 ## Layout da tela
 
 `WeatherView.vue` empilha o `canvas` (cena) e um overlay flex. O overlay tem `pointer-events: none` e **só os filhos diretos das linhas** reativam o clique — se um elemento novo não responder ao mouse, é isso: adicione-o à regra `pointer-events: auto` no `<style scoped>` da view.

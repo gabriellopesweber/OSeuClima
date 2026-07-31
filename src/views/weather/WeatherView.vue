@@ -134,6 +134,9 @@ onMounted(load)
   display: block;
 }
 
+/* `viewport-fit=cover` no index.html faz a página ir até as bordas; sem os
+   env() o cabeçalho fica por baixo do notch e a faixa horária por baixo da
+   barra de gestos. */
 .weather-overlay {
   position: relative;
   z-index: 1;
@@ -141,7 +144,11 @@ onMounted(load)
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 32px 48px;
+  padding:
+    max(32px, env(safe-area-inset-top))
+    max(48px, env(safe-area-inset-right))
+    max(32px, env(safe-area-inset-bottom))
+    max(48px, env(safe-area-inset-left));
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -212,7 +219,11 @@ onMounted(load)
 
 @media (max-width: 959px) {
   .weather-overlay {
-    padding: 20px;
+    padding:
+      max(20px, env(safe-area-inset-top))
+      max(20px, env(safe-area-inset-right))
+      max(20px, env(safe-area-inset-bottom))
+      max(20px, env(safe-area-inset-left));
   }
 
   .overlay-footer {
@@ -222,12 +233,56 @@ onMounted(load)
 }
 
 @media (max-width: 599px) {
-  .header-actions {
-    flex: 1 1 100%;
+  /* Cabeçalho numa linha só: deixar `.header-actions` quebrar para 100% custa
+     ~50px de altura, que aqui pertencem à cena. O `:not()` é essencial — o
+     rodapé também é `.overlay-row`, e sem ele o cartão para de ocupar a
+     largura toda e divide a linha com a faixa horária. */
+  .overlay-row:not(.overlay-footer) {
+    gap: 12px;
+    flex-wrap: nowrap;
   }
 
-  .notice-slot {
+  .brand {
+    font-size: 20px;
+    flex: 0 0 auto;
+  }
+
+  .header-actions {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+
+  .notice-slot,
+  .search-error {
     align-self: stretch;
+  }
+}
+
+/* Celular deitado: sobra largura e falta altura, então volta o arranjo lado a
+   lado do desktop. Sem isto o conteúdo passa dos ~390px e é cortado, porque a
+   página tem overflow: hidden. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .weather-overlay {
+    gap: 4px;
+    padding:
+      max(10px, env(safe-area-inset-top))
+      max(16px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+  }
+
+  .overlay-row {
+    flex-wrap: nowrap;
+  }
+
+  .overlay-footer {
+    align-items: flex-end;
+    gap: 12px;
+  }
+
+  .brand {
+    font-size: 18px;
   }
 }
 </style>

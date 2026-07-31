@@ -55,7 +55,7 @@ const stats = computed(() => [
 </script>
 
 <template>
-  <v-card class="summary-card bg-surface pa-7">
+  <v-card class="summary-card bg-surface">
     <v-chip
       :color="accent"
       variant="flat"
@@ -71,7 +71,7 @@ const stats = computed(() => [
     </h1>
     <p
       v-if="locationLine"
-      class="text-caption on-surface-muted mb-0"
+      class="card-location text-caption on-surface-muted mb-0"
     >
       {{ locationLine }}
     </p>
@@ -79,11 +79,11 @@ const stats = computed(() => [
     <p class="font-display temperature on-surface mt-2 mb-0">
       {{ temperature }}{{ degrees }}
     </p>
-    <p class="text-body-2 on-surface-muted mt-1 mb-0">
+    <p class="card-tagline text-body-2 on-surface-muted mt-1 mb-0">
       {{ tagline }}
     </p>
 
-    <div class="stats mt-5 pt-4">
+    <div class="stats">
       <div
         v-for="stat in stats"
         :key="stat.key"
@@ -104,6 +104,7 @@ const stats = computed(() => [
    própria, senão as duas rodariam juntas a cada troca. */
 .summary-card {
   max-width: 420px;
+  padding: 28px;
   border-radius: 28px;
   box-shadow: 0 20px 50px rgba(var(--v-theme-on-surface), 0.25);
 }
@@ -125,6 +126,8 @@ const stats = computed(() => [
 .stats {
   display: flex;
   gap: 18px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid rgb(var(--v-theme-outline-variant));
 }
 
@@ -133,9 +136,64 @@ const stats = computed(() => [
     max-width: none;
     width: 100%;
   }
+}
+
+/*
+  Variante compacta. Some a tagline e a linha de localização, a temperatura
+  encolhe e as três métricas viram uma linha só com separador — libera ~180px,
+  que é o espaço devolvido à cena 3D em retrato.
+*/
+@media (max-width: 599px), (orientation: landscape) and (max-height: 500px) {
+  .summary-card {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .card-location,
+  .card-tagline {
+    display: none;
+  }
+
+  .city-name {
+    font-size: 24px;
+  }
 
   .temperature {
-    font-size: 60px;
+    font-size: 52px;
+  }
+
+  .stats {
+    gap: 0;
+    margin-top: 14px;
+    padding-top: 12px;
+  }
+
+  .stats > div {
+    display: flex;
+    flex: 1 1 0;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  /* "10 km/h" quebrava em duas linhas e desalinhava a régua de métricas. */
+  .stats > div > p {
+    white-space: nowrap;
+  }
+
+  .stats > div + div {
+    padding-left: 12px;
+    border-left: 1px solid rgb(var(--v-theme-outline-variant));
+  }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .summary-card {
+    max-width: 340px;
+  }
+
+  .temperature {
+    font-size: 40px;
   }
 }
 </style>
