@@ -18,6 +18,9 @@ const props = defineProps({
   place: { type: Object, required: true },
   measures: { type: Object, required: true },
   units: { type: String, default: 'metric' },
+  // Vazia sempre que a lua não estiver visível no céu — quem decide isso é
+  // `useCelestial`, o cartão só deixa de renderizar o chip.
+  moonPhaseKey: { type: String, default: '' },
 })
 
 const category = computed(() => props.measures.category)
@@ -56,15 +59,25 @@ const stats = computed(() => [
 
 <template>
   <v-card class="summary-card bg-surface">
-    <v-chip
-      :color="accent"
-      variant="flat"
-      size="small"
-      :prepend-icon="icon"
-      class="font-weight-bold"
-    >
-      {{ label }}
-    </v-chip>
+    <div class="d-flex flex-wrap ga-2">
+      <v-chip
+        :color="accent"
+        variant="flat"
+        size="small"
+        :prepend-icon="icon"
+        class="font-weight-bold"
+      >
+        {{ label }}
+      </v-chip>
+      <v-chip
+        v-if="moonPhaseKey"
+        variant="tonal"
+        size="small"
+        prepend-icon="mdi-moon-waning-crescent"
+      >
+        {{ t(moonPhaseKey) }}
+      </v-chip>
+    </div>
 
     <h1 class="font-display city-name on-surface mt-3">
       {{ place.city }}

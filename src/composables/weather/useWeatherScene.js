@@ -2,9 +2,18 @@ import { onBeforeUnmount, onMounted, watch } from 'vue'
 
 import { createWeatherScene } from '@/scene/weatherScene'
 
-export function useWeatherScene(canvasRef, { category, isDay, wind, season, reducedMotion }) {
+export function useWeatherScene(canvasRef, { category, wind, season, celestial, reducedMotion }) {
   let scene = null
   let observer = null
+
+  // O céu chega como um pacote só: as quatro grandezas são do mesmo instante e
+  // aplicá-las separadamente daria um frame com o sol de agora e a lua de antes.
+  const pushCelestial = () => scene?.setCelestial({
+    sun: celestial.sun.value,
+    moon: celestial.moon.value,
+    illumination: celestial.illumination.value,
+    latitude: celestial.latitude.value,
+  })
 
   onMounted(() => {
     if (!canvasRef.value) return
@@ -19,16 +28,18 @@ export function useWeatherScene(canvasRef, { category, isDay, wind, season, redu
     }
     scene.setReducedMotion(reducedMotion.value)
     scene.setSeason(season.value)
-    scene.setWeather(category.value, isDay.value)
+    pushCelestial()
+    scene.setWeather(category.value)
     scene.setWind(wind.value)
     observer = new ResizeObserver(() => scene?.resize())
     observer.observe(canvasRef.value)
   })
 
-  watch([category, isDay], ([nextCategory, nextIsDay]) => scene?.setWeather(nextCategory, nextIsDay))
+  watch(category, (value) => scene?.setWeather(value))
   watch(wind, (value) => scene?.setWind(value))
   watch(season, (value) => scene?.setSeason(value))
   watch(reducedMotion, (value) => scene?.setReducedMotion(value))
+  watch([celestial.sun, celestial.moon, celestial.illumination, celestial.latitude], pushCelestial)
 
   onBeforeUnmount(() => {
     observer?.disconnect()

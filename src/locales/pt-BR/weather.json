@@ -12,7 +12,25 @@
       "scene_auto": "Tempo real",
       "season": "Estação",
       "season_auto": "Pela data e local",
+      "time": "Horário",
+      "time_auto": "Agora",
       "reduced_motion": "Reduzir animações"
+    },
+    "times": {
+      "dawn": "Amanhecer",
+      "noon": "Meio-dia",
+      "dusk": "Entardecer",
+      "night": "Noite"
+    },
+    "moon": {
+      "new": "Lua nova",
+      "waxing_crescent": "Crescente côncava",
+      "first_quarter": "Quarto crescente",
+      "waxing_gibbous": "Crescente convexa",
+      "full": "Lua cheia",
+      "waning_gibbous": "Minguante convexa",
+      "last_quarter": "Quarto minguante",
+      "waning_crescent": "Minguante côncava"
     },
     "loading": "Descobrindo o clima da sua região...",
     "stats": {

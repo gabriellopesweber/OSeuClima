@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
   CanvasTexture,
@@ -12,8 +13,10 @@ import {
   HemisphereLight,
   IcosahedronGeometry,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   PointLight,
   Points,
   PointsMaterial,
@@ -26,7 +29,9 @@ import {
 
 import { DEFAULT_SEASON, SEASONS } from '@/utils/season'
 
-import { approach, dampFactor, isSettled } from './interpolate'
+import { approach, approachAngle, dampFactor, isSettled } from './interpolate'
+import { createMoonGlowTexture, createMoonTexture, PHASE_EPSILON } from './moonPhase'
+import { bearingFor, positionFor, SKY } from './skyPlacement'
 import { sceneColor, toCssColor } from './themeColor'
 import { windStrength } from './wind'
 
@@ -42,10 +47,35 @@ const REDUCED_SNOW_PARTICLES = 180
 const NIGHT_SKY_TOP_DARKEN = 0.55
 const NIGHT_SKY_BOTTOM_DARKEN = 0.6
 
+const STAR_COUNT = 260
+const STAR_OPACITY = 0.9
+
+const DEG = Math.PI / 180
+
+/**
+ * A luz do dia como curva, não como degrau.
+ *
+ * O `is_day` da API é booleano, então o cenário trocava de dia para noite num
+ * frame. Com a altitude solar em mãos ela vira uma rampa entre o crepúsculo
+ * civil (−6°) e o sol já solto do horizonte (+6°) — e o anoitecer acontece.
+ */
+const DAYLIGHT_RANGE = { from: -6 * DEG, to: 6 * DEG }
+
+/** Faixa em que o astro nasce/se põe: some ao cruzar o horizonte, sem piscar. */
+const RISE_RANGE = { from: -3 * DEG, to: 2 * DEG }
+
+/** Perto do horizonte o céu e o sol esquentam. Zero acima disto. */
+const GOLDEN_ALTITUDE = 10 * DEG
+
 // Velocidade de convergência (1/s). `REDUCED` é alto o bastante para a troca
 // parecer imediata sem virar um corte de um frame só.
-const LAMBDA = { scene: 2.4, sun: 5, particle: 4, gust: 1.1, wind: 1.6 }
+const LAMBDA = { scene: 2.4, sun: 5, particle: 4, gust: 1.1, wind: 1.6, sky: 1.2 }
 const LAMBDA_REDUCED = 30
+
+const smoothstep = (from, to, value) => {
+  const t = Math.min(Math.max((value - from) / (to - from), 0), 1)
+  return t * t * (3 - 2 * t)
+}
 
 // Como o vento (0..1) se traduz em movimento. A nuvem nunca para de todo:
 // céu parado com nuvem imóvel parece bug, não calmaria.
@@ -62,10 +92,14 @@ const PARTICLE_WRAP_X = 14
  * um enquadramento por aspecto **e** um `squeeze` que aproxima os elementos do
  * centro. `targetY` mais baixo inclina a câmera para baixo e sobe o horizonte,
  * deixando o topo do quadro — a parte que a UI não cobre — com cena.
+ *
+ * `spread` é o mesmo remédio aplicado ao céu: comprime o azimute do sol e da
+ * lua, senão o astro da manhã fica a 90° do eixo da câmera — fora da tela. Ver
+ * `skyPlacement.js`.
  */
 const FRAMING = {
-  landscape: { aspect: 1.4, fov: 45, z: 11, targetY: 1.5, squeeze: 1 },
-  portrait: { aspect: 0.62, fov: 56, z: 13.5, targetY: 0.5, squeeze: 0.38 },
+  landscape: { aspect: 1.4, fov: 45, z: 11, targetY: 1.5, squeeze: 1, spread: 0.35 },
+  portrait: { aspect: 0.62, fov: 56, z: 13.5, targetY: 0.5, squeeze: 0.38, spread: 0.16 },
 }
 
 const CLOUD_SPREAD_X = 26
@@ -84,13 +118,17 @@ const PARTICLE_SIZE = { rain: 0.05, snow: 0.14 }
 // `seasonBlend` é quanto o chão da estação puxa o chão da condição. A neve
 // zera: neve acumulada cobre a vegetação, então a estação não deve aparecer
 // por baixo dela.
+//
+// `openSky` é o céu aberto o bastante para se ver o que há atrás das nuvens —
+// libera sol, lua **e** estrelas de uma vez. Chuva, tempestade, neve e neblina
+// tampam os três; não faz sentido uma lua nítida sobre um temporal.
 const PALETTES = {
-  clear: { sky: 'scene-clear', ground: 'scene-clear-ground', cloud: 'scene-clear-cloud', particle: 'none', veil: null, sun: true, cloudCount: 2, seasonBlend: 0.55 },
-  cloudy: { sky: 'scene-cloudy', ground: 'scene-cloudy-ground', cloud: 'scene-cloudy-cloud', particle: 'none', veil: null, sun: true, cloudCount: 6, seasonBlend: 0.5 },
-  rain: { sky: 'scene-rain', ground: 'scene-rain-ground', cloud: 'scene-rain-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7, seasonBlend: 0.4 },
-  storm: { sky: 'scene-storm', ground: 'scene-storm-ground', cloud: 'scene-storm-cloud', particle: 'rain', veil: null, sun: false, cloudCount: 7, lightning: true, seasonBlend: 0.35 },
-  snow: { sky: 'scene-snow', ground: 'scene-snow-ground', cloud: 'scene-snow-cloud', particle: 'snow', veil: null, sun: false, cloudCount: 5, seasonBlend: 0 },
-  fog: { sky: 'scene-fog', ground: 'scene-fog-ground', cloud: 'scene-fog-cloud', particle: 'none', veil: 'scene-fog-veil', sun: false, cloudCount: 4, seasonBlend: 0.35 },
+  clear: { sky: 'scene-clear', ground: 'scene-clear-ground', cloud: 'scene-clear-cloud', particle: 'none', veil: null, openSky: true, cloudCount: 2, seasonBlend: 0.55 },
+  cloudy: { sky: 'scene-cloudy', ground: 'scene-cloudy-ground', cloud: 'scene-cloudy-cloud', particle: 'none', veil: null, openSky: true, cloudCount: 6, seasonBlend: 0.5 },
+  rain: { sky: 'scene-rain', ground: 'scene-rain-ground', cloud: 'scene-rain-cloud', particle: 'rain', veil: null, openSky: false, cloudCount: 7, seasonBlend: 0.4 },
+  storm: { sky: 'scene-storm', ground: 'scene-storm-ground', cloud: 'scene-storm-cloud', particle: 'rain', veil: null, openSky: false, cloudCount: 7, lightning: true, seasonBlend: 0.35 },
+  snow: { sky: 'scene-snow', ground: 'scene-snow-ground', cloud: 'scene-snow-cloud', particle: 'snow', veil: null, openSky: false, cloudCount: 5, seasonBlend: 0 },
+  fog: { sky: 'scene-fog', ground: 'scene-fog-ground', cloud: 'scene-fog-cloud', particle: 'none', veil: 'scene-fog-veil', openSky: false, cloudCount: 4, seasonBlend: 0.35 },
 }
 
 const HILLS = [[-7, -1.7, -6, 3], [8, -1.9, -8, 4], [-3, -1.8, -10, 2.5]]
@@ -204,6 +242,60 @@ export function createWeatherScene(canvas) {
   sun.position.set(5, 6, -8)
   scene.add(sun)
 
+  // A lua é um disco chapado com a fase desenhada, não uma esfera iluminada:
+  // combina com o resto do cenário low-poly e o terminador sai geometricamente
+  // exato, sem depender de uma luz extra só para ela.
+  //
+  // Dois níveis por um motivo: o grupo externo encara a câmera (billboard) e o
+  // plano interno gira pelo ângulo do limbo. Fundir os dois faria uma rotação
+  // interferir na outra.
+  const moon = new Group()
+  const moonGlowMaterial = track(new MeshBasicMaterial({
+    map: track(createMoonGlowTexture()),
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    opacity: 0,
+  }))
+  const moonGlow = new Mesh(track(new PlaneGeometry(6.5, 6.5)), moonGlowMaterial)
+  // Fora do `track()` de propósito: esta referência é **substituída** quando a
+  // fase muda, então quem descarta é o `dispose()`, que sempre olha a atual.
+  let moonTexture = createMoonTexture(0.5)
+  const moonMaterial = track(new MeshBasicMaterial({
+    map: moonTexture,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0,
+  }))
+  const moonDisc = new Mesh(track(new PlaneGeometry(2.4, 2.4)), moonMaterial)
+  moon.add(moonGlow, moonDisc)
+  moon.visible = false
+  scene.add(moon)
+
+  // Estrelas num casco à frente e acima, atrás de tudo. Distribuídas por
+  // ângulo (e não num cubo) para não adensarem nos cantos do quadro.
+  const starGeometry = track(new BufferGeometry())
+  const starPositions = new Float32Array(STAR_COUNT * 3)
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const bearing = (Math.random() - 0.5) * Math.PI * 1.2
+    const climb = Math.random() * Math.PI * 0.42
+    const radius = 26 + Math.random() * 6
+    starPositions[i * 3] = radius * Math.sin(bearing) * Math.cos(climb)
+    starPositions[i * 3 + 1] = SKY.HORIZON_Y + radius * Math.sin(climb)
+    starPositions[i * 3 + 2] = -radius * Math.cos(bearing) * Math.cos(climb)
+  }
+  starGeometry.setAttribute('position', new BufferAttribute(starPositions, 3))
+  const starMaterial = track(new PointsMaterial({
+    color: sceneColor('scene-star'),
+    size: 0.16,
+    transparent: true,
+    opacity: 0,
+    sizeAttenuation: true,
+  }))
+  const stars = new Points(starGeometry, starMaterial)
+  stars.visible = false
+  scene.add(stars)
+
   const puffGeometry = track(new SphereGeometry(1, 8, 6))
   const clouds = []
   for (let i = 0; i < 7; i++) {
@@ -246,21 +338,41 @@ export function createWeatherScene(canvas) {
 
   let lightningTimer = 0
   let category = 'clear'
-  let isDay = true
   let season = DEFAULT_SEASON
   let reduced = false
   let particleMode = 'none'
   let gust = 0
+  let spread = FRAMING.landscape.spread
+  let drawnFraction = 0.5
+
+  /**
+   * O que o céu real está fazendo agora. Fica fora de `target` porque não é
+   * interpolado como número solto: `applyTargets` deriva daqui as grandezas que
+   * de fato convergem (luz do dia, presença dos astros, calor do crepúsculo).
+   */
+  const celestial = {
+    sunAltitude: 0.9,
+    sunAzimuth: Math.PI,
+    moonAltitude: -0.5,
+    moonAzimuth: 0,
+    moonFraction: 0.5,
+    limbAngle: 0,
+    latitude: null,
+  }
 
   // Estado vivo da cena e o alvo para onde ele converge. Todo `setWeather`
   // mexe só no alvo — quem interpola é o loop.
   const live = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
     leaf: new Color(), hill: new Color(), fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleOpacity: 0, wind: 0,
+    sunAltitude: 0.9, sunBearing: 0, moonAltitude: -0.5, moonBearing: 0,
+    moonPresence: 0, starOpacity: 0, limbAngle: 0,
   }
   const target = {
     skyTop: new Color(), skyBottom: new Color(), ground: new Color(), cloud: new Color(), veil: new Color(),
     leaf: new Color(), hill: new Color(), fog: 0, hemi: 0, sun: 0, sunPresence: 0, particleMode: 'none', lightning: false, wind: 0,
+    sunAltitude: 0.9, sunBearing: 0, moonAltitude: -0.5, moonBearing: 0,
+    moonPresence: 0, starOpacity: 0, limbAngle: 0,
   }
   const paintedSky = { top: new Color(), bottom: new Color() }
 
@@ -289,9 +401,24 @@ export function createWeatherScene(canvas) {
 
   function applyTargets() {
     const palette = PALETTES[category]
+    const { sunAltitude, moonAltitude, latitude } = celestial
 
-    target.skyTop.copy(sceneColor(`${palette.sky}-sky-top`, isDay ? 0 : NIGHT_SKY_TOP_DARKEN))
-    target.skyBottom.copy(sceneColor(`${palette.sky}-sky-bottom`, isDay ? 0 : NIGHT_SKY_BOTTOM_DARKEN))
+    // A curva que substituiu o `is_day`: 0 na noite fechada, 1 com o sol solto
+    // do horizonte, e todo o crepúsculo no meio.
+    const daylight = smoothstep(DAYLIGHT_RANGE.from, DAYLIGHT_RANGE.to, sunAltitude)
+    // Quanto o sol está rasante — é o que traz o laranja para o céu e para o
+    // próprio disco. Vale tanto subindo quanto descendo.
+    const golden = 1 - Math.min(Math.abs(sunAltitude) / GOLDEN_ALTITUDE, 1)
+    const openSky = palette.openSky ? 1 : 0
+
+    target.skyTop.copy(sceneColor(`${palette.sky}-sky-top`, NIGHT_SKY_TOP_DARKEN * (1 - daylight)))
+    target.skyBottom.copy(sceneColor(`${palette.sky}-sky-bottom`, NIGHT_SKY_BOTTOM_DARKEN * (1 - daylight)))
+    if (golden > 0) {
+      // O calor entra por cima do escurecimento, senão o pôr do sol seria só um
+      // céu cinza mais claro. Mais forte embaixo, onde o sol de fato está.
+      target.skyTop.lerp(sceneColor('scene-dusk-sky-top'), golden * 0.55)
+      target.skyBottom.lerp(sceneColor('scene-dusk-sky-bottom'), golden * 0.8)
+    }
 
     // O chão da condição carrega a luz e a umidade do tempo; a estação puxa a
     // cor da vegetação por cima. A folhagem vem inteira da estação.
@@ -304,24 +431,63 @@ export function createWeatherScene(canvas) {
     target.cloud.copy(sceneColor(palette.cloud))
     if (palette.veil) target.veil.copy(sceneColor(palette.veil))
     target.fog = palette.veil ? 1 : 0
-    target.hemi = (isDay ? 1 : 0.3) * LEGACY_LIGHT_SCALE
-    target.sun = (isDay ? 1.2 : 0.15) * LEGACY_LIGHT_SCALE
-    target.sunPresence = palette.sun && isDay ? 1 : 0
+    target.hemi = (0.3 + 0.7 * daylight) * LEGACY_LIGHT_SCALE
+    target.sun = (0.15 + 1.05 * daylight) * LEGACY_LIGHT_SCALE
     target.particleMode = palette.particle
     target.lightning = !!palette.lightning
+
+    // O sol **se põe** em vez de desaparecer: some ao cruzar o horizonte.
+    target.sunPresence = openSky * smoothstep(RISE_RANGE.from, RISE_RANGE.to, sunAltitude)
+    // A lua só aparece de noite e só se estiver mesmo acima do horizonte —
+    // metade das noites ela não está, e é para isso que serve o seletor de
+    // horário nas preferências.
+    target.moonPresence = openSky
+      * smoothstep(RISE_RANGE.from, RISE_RANGE.to, moonAltitude)
+      * (1 - daylight)
+    target.starOpacity = openSky * (1 - daylight) * STAR_OPACITY
+
+    target.sunAltitude = sunAltitude
+    target.sunBearing = bearingFor(celestial.sunAzimuth, latitude)
+    target.moonAltitude = moonAltitude
+    target.moonBearing = bearingFor(celestial.moonAzimuth, latitude)
+    target.limbAngle = celestial.limbAngle
+
+    sunMaterial.emissive.copy(sceneColor('scene-sun-glow')).lerp(sceneColor('scene-sun-low'), golden)
+    sunMaterial.color.copy(sceneColor('scene-sun')).lerp(sceneColor('scene-sun-low'), golden * 0.7)
 
     clouds.forEach((cloud, index) => { cloud.userData.target = index < palette.cloudCount ? 1 : 0 })
   }
 
-  function setWeather(nextCategory, dayFlag) {
-    const changed = nextCategory !== category || dayFlag !== isDay
+  function setWeather(nextCategory) {
+    const changed = nextCategory !== category
     category = PALETTES[nextCategory] ? nextCategory : 'clear'
-    isDay = dayFlag !== false
     applyTargets()
 
     // Rajada: as nuvens aceleram e desaceleram, para a mudança parecer que o
     // tempo "chegou" em vez de ter sido trocado.
     if (changed && !reduced) gust = 1
+  }
+
+  /**
+   * Onde o sol e a lua estão de verdade, e como está a fase. Só escreve no
+   * alvo — quem move é o `stepTransition`, como todo o resto da cena.
+   */
+  function setCelestial({ sun: sunAt, moon: moonAt, illumination, latitude }) {
+    if (!sunAt || !moonAt || !illumination) return
+
+    celestial.sunAltitude = sunAt.altitude
+    celestial.sunAzimuth = sunAt.azimuth
+    celestial.moonAltitude = moonAt.altitude
+    celestial.moonAzimuth = moonAt.azimuth
+    celestial.moonFraction = illumination.fraction
+    // Ângulo do limbo brilhante medido a partir do zênite do observador: é o
+    // desconto do ângulo paraláctico que faz a foice tombar para o lado certo
+    // em cada hemisfério. O sinal negativo leva de "leste a partir do norte"
+    // para a rotação em torno de z do plano, que cresce ao contrário.
+    celestial.limbAngle = -(illumination.angle - moonAt.parallacticAngle)
+    celestial.latitude = latitude ?? null
+
+    applyTargets()
   }
 
   /** Estação já resolvida (hemisfério incluído) por `@/utils/season`. */
@@ -349,6 +515,13 @@ export function createWeatherScene(canvas) {
     live.sun = target.sun
     live.sunPresence = target.sunPresence
     live.wind = target.wind
+    live.sunAltitude = target.sunAltitude
+    live.sunBearing = target.sunBearing
+    live.moonAltitude = target.moonAltitude
+    live.moonBearing = target.moonBearing
+    live.moonPresence = target.moonPresence
+    live.starOpacity = target.starOpacity
+    live.limbAngle = target.limbAngle
     applyParticleMode(target.particleMode)
     live.particleOpacity = PARTICLE_OPACITY[particleMode]
     clouds.forEach((cloud) => { cloud.userData.presence = cloud.userData.target })
@@ -377,8 +550,30 @@ export function createWeatherScene(canvas) {
     })
     hemisphere.intensity = live.hemi
     sunLight.intensity = live.sun
+
+    const sunAt = positionFor(live.sunBearing, live.sunAltitude, spread)
+    sun.position.set(sunAt.x, sunAt.y, sunAt.z)
     sun.visible = live.sunPresence > 0.01
     sun.scale.setScalar(live.sunPresence)
+
+    const moonAt = positionFor(live.moonBearing, live.moonAltitude, spread)
+    moon.position.set(moonAt.x, moonAt.y, moonAt.z)
+    moon.visible = live.moonPresence > 0.01
+
+    // A luz direcional segue o astro que está no céu. À noite ela é fraca, mas
+    // apontar para a lua é o que evita sombra de sol num cenário sem sol.
+    sunLight.position.copy(live.sunPresence > 0.05 ? sun.position : moon.position)
+
+    if (moon.visible) {
+      moon.lookAt(camera.position)
+      moonDisc.rotation.z = live.limbAngle
+      moonMaterial.opacity = live.moonPresence
+      moonGlowMaterial.opacity = live.moonPresence * 0.6
+    }
+
+    stars.visible = live.starOpacity > 0.01
+    starMaterial.opacity = live.starOpacity
+
     scene.fog.color.copy(live.veil)
     scene.fog.near = FOG_NEAR.off + (FOG_NEAR.on - FOG_NEAR.off) * live.fog
     scene.fog.far = FOG_FAR.off + (FOG_FAR.on - FOG_FAR.off) * live.fog
@@ -408,6 +603,30 @@ export function createWeatherScene(canvas) {
 
     const sunLambda = reduced ? LAMBDA_REDUCED : LAMBDA.sun
     live.sunPresence = approach(live.sunPresence, target.sunPresence, sunLambda, delta)
+    live.moonPresence = approach(live.moonPresence, target.moonPresence, sunLambda, delta)
+    live.starOpacity = approach(live.starOpacity, target.starOpacity, lambda, delta)
+
+    // O céu se move mais devagar que o resto: o sol atravessando o quadro num
+    // salto de horário é para parecer viagem no tempo, não teletransporte.
+    const skyLambda = reduced ? LAMBDA_REDUCED : LAMBDA.sky
+    live.sunAltitude = approach(live.sunAltitude, target.sunAltitude, skyLambda, delta)
+    live.moonAltitude = approach(live.moonAltitude, target.moonAltitude, skyLambda, delta)
+    // Rumo e inclinação do limbo são ângulos: pelo caminho curto, senão dão a
+    // volta inteira ao cruzarem o ponto oposto à câmera.
+    live.sunBearing = approachAngle(live.sunBearing, target.sunBearing, skyLambda, delta)
+    live.moonBearing = approachAngle(live.moonBearing, target.moonBearing, skyLambda, delta)
+    live.limbAngle = approachAngle(live.limbAngle, target.limbAngle, skyLambda, delta)
+
+    // A fase muda ao longo de dias, então na prática isto redesenha uma vez por
+    // sessão — mas o seletor de horário pode saltar semanas de uma vez.
+    if (Math.abs(celestial.moonFraction - drawnFraction) > PHASE_EPSILON) {
+      drawnFraction = celestial.moonFraction
+      const next = createMoonTexture(drawnFraction)
+      moonTexture.dispose()
+      moonTexture = next
+      moonMaterial.map = next
+      moonMaterial.needsUpdate = true
+    }
 
     clouds.forEach((cloud) => {
       cloud.userData.presence = approach(cloud.userData.presence, cloud.userData.target, lambda, delta)
@@ -429,7 +648,7 @@ export function createWeatherScene(canvas) {
 
   function setReducedMotion(value) {
     reduced = !!value
-    setWeather(category, isDay)
+    setWeather(category)
     applyParticleMode(target.particleMode)
   }
 
@@ -444,6 +663,10 @@ export function createWeatherScene(canvas) {
     camera.fov = mix(landscape.fov, portrait.fov, t)
     camera.position.z = mix(landscape.z, portrait.z, t)
     camera.lookAt(0, mix(landscape.targetY, portrait.targetY, t), 0)
+
+    // Quanto mais estreito o quadro, mais o arco do céu precisa ser comprimido
+    // para o astro continuar dentro dele.
+    spread = mix(landscape.spread, portrait.spread, t)
 
     const nextSqueeze = mix(landscape.squeeze, portrait.squeeze, t)
     if (nextSqueeze !== squeeze) {
@@ -490,8 +713,9 @@ export function createWeatherScene(canvas) {
       cloud.position.x += cloud.userData.speed * delta * drift
       if (cloud.position.x > wrapX) cloud.position.x = -wrapX
     })
+    // O sol gira sobre si, mas não flutua mais: a altura dele agora é a
+    // altitude real, e um seno por cima só a desmentiria.
     sun.rotation.y += delta * 0.1
-    sun.position.y += Math.sin(elapsed * 0.5) * 0.0015
 
     // Folhagem balança na frequência e na amplitude do vento medido.
     const swayAmount = wind * WIND.sway * speed
@@ -539,7 +763,7 @@ export function createWeatherScene(canvas) {
   }
 
   resize()
-  setWeather(category, isDay)
+  setWeather(category)
   snapToTarget()
   applyLive()
   animate()
@@ -548,6 +772,7 @@ export function createWeatherScene(canvas) {
     setWeather,
     setSeason,
     setWind,
+    setCelestial,
     setReducedMotion,
     resize,
     dispose() {
@@ -555,6 +780,7 @@ export function createWeatherScene(canvas) {
       disposables.forEach((item) => item.dispose())
       timer.dispose()
       skyTexture.dispose()
+      moonTexture.dispose()
       renderer.dispose()
     },
   }

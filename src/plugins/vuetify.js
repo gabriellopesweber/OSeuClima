@@ -74,6 +74,15 @@ const colors = {
   'scene-snowflake': '#FFFFFF',
   'scene-lightning': '#E8ECFF',
   'scene-night-bounce': '#3A3A55',
+
+  // Céu que segue o relógio: crepúsculo, sol rasante, lua e estrelas.
+  'scene-dusk-sky-top': '#3A3F66',
+  'scene-dusk-sky-bottom': '#F2A05A',
+  'scene-sun-low': '#FF7A3D',
+  'scene-moon': '#EDEFF5',
+  'scene-moon-dark': '#4A5468',
+  'scene-moon-glow': '#9FB6D9',
+  'scene-star': '#EAF2FF',
 }
 
 export default createVuetify({
