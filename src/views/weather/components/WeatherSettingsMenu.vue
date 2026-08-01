@@ -2,8 +2,10 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { TIME_SLOTS } from '@/composables/weather/useCelestial'
+
 import { SEASONS } from '@/utils/season'
-import { conditionLabelKey, seasonLabelKey, WEATHER_CATEGORIES, WEATHER_ICONS } from '@/utils/weather'
+import { conditionLabelKey, seasonLabelKey, timeLabelKey, WEATHER_CATEGORIES, WEATHER_ICONS } from '@/utils/weather'
 
 const { t } = useI18n()
 
@@ -14,9 +16,17 @@ const SEASON_ICONS = {
   winter: 'mdi-snowflake',
 }
 
+const TIME_ICONS = {
+  dawn: 'mdi-weather-sunset-up',
+  noon: 'mdi-white-balance-sunny',
+  dusk: 'mdi-weather-sunset-down',
+  night: 'mdi-weather-night',
+}
+
 const units = defineModel('units', { type: String, default: 'metric' })
 const demoCategory = defineModel('demoCategory', { type: String, default: 'auto' })
 const seasonOverride = defineModel('seasonOverride', { type: String, default: 'auto' })
+const timeOverride = defineModel('timeOverride', { type: String, default: 'auto' })
 const reducedMotion = defineModel('reducedMotion', { type: Boolean, default: false })
 
 const seasonOptions = computed(() => [
@@ -25,6 +35,15 @@ const seasonOptions = computed(() => [
     value: season,
     title: t(seasonLabelKey(season)),
     props: { prependIcon: SEASON_ICONS[season] },
+  })),
+])
+
+const timeOptions = computed(() => [
+  { value: 'auto', title: t('weather.settings.time_auto'), props: { prependIcon: 'mdi-clock-outline' } },
+  ...TIME_SLOTS.map((slot) => ({
+    value: slot,
+    title: t(timeLabelKey(slot)),
+    props: { prependIcon: TIME_ICONS[slot] },
   })),
 ])
 
@@ -98,6 +117,14 @@ const sceneOptions = computed(() => [
         v-model="seasonOverride"
         :items="seasonOptions"
         :label="t('weather.settings.season')"
+        hide-details
+        class="mb-3"
+      />
+
+      <v-select
+        v-model="timeOverride"
+        :items="timeOptions"
+        :label="t('weather.settings.time')"
         hide-details
         class="mb-2"
       />

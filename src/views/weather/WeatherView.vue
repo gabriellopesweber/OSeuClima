@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { useCelestial } from '@/composables/weather/useCelestial'
 import { useWeather } from '@/composables/weather/useWeather'
 import { useWeatherScene } from '@/composables/weather/useWeatherScene'
 import { useWeatherSettings } from '@/composables/weather/useWeatherSettings'
@@ -17,16 +18,17 @@ const { t } = useI18n()
 
 const canvasRef = ref(null)
 
-const { units, demoCategory, seasonOverride, reducedMotion } = useWeatherSettings()
+const { units, demoCategory, seasonOverride, timeOverride, reducedMotion } = useWeatherSettings()
 const {
   isLoading,
   notice,
   place,
   measures,
   category,
-  isDay,
   windSpeed,
   season,
+  latitude,
+  longitude,
   hourly,
   searchTerm,
   searchBusy,
@@ -38,7 +40,9 @@ const {
 
 const activeSeason = computed(() => (seasonOverride.value === 'auto' ? season.value : seasonOverride.value))
 
-useWeatherScene(canvasRef, { category, isDay, wind: windSpeed, season: activeSeason, reducedMotion })
+const celestial = useCelestial({ latitude, longitude, timeOverride })
+
+useWeatherScene(canvasRef, { category, wind: windSpeed, season: activeSeason, celestial, reducedMotion })
 
 // Só cidade e condição remontam o cartão: trocar °C/°F muda os números sem
 // reanimar a tela inteira.
@@ -73,6 +77,7 @@ onMounted(load)
             v-model:units="units"
             v-model:demo-category="demoCategory"
             v-model:season-override="seasonOverride"
+            v-model:time-override="timeOverride"
             v-model:reduced-motion="reducedMotion"
           />
         </div>
@@ -104,6 +109,7 @@ onMounted(load)
             :place="place"
             :measures="measures"
             :units="units"
+            :moon-phase-key="celestial.moonPhaseKey.value"
           />
         </Transition>
         <WeatherHourlyStrip

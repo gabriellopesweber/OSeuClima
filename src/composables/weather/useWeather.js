@@ -6,8 +6,10 @@ import { seasonFor } from '@/utils/season'
 import { categorizeWeatherCode, DEFAULT_CATEGORY, DEMO_MEASURES } from '@/utils/weather'
 
 const FALLBACK_CITY = 'São Paulo'
-// Latitude de referência do modo demonstração, para a estação sair determinística.
+// Coordenadas de referência do modo demonstração, para a estação e o céu
+// saírem determinísticos.
 const DEMO_LATITUDE = -23.55
+const DEMO_LONGITUDE = -46.63
 const GEOLOCATION_TIMEOUT = 8000
 const HOURLY_SLOTS = 6
 
@@ -51,9 +53,10 @@ export function useWeather(demoCategory) {
   const hourly = ref([])
   const searchTerm = ref('')
   const searchError = ref('')
-  // Só o hemisfério importa, mas guardar a latitude crua evita ter que
-  // recalcular o sinal em três lugares.
+  // A latitude decide o hemisfério (estação, lado do nascente); as duas juntas
+  // decidem onde o sol e a lua estão no céu — ver `useCelestial`.
   const latitude = ref(null)
+  const longitude = ref(null)
 
   const isLoading = computed(() => phase.value === 'loading')
   const searchBusy = computed(() => getCityForecast.loading.value)
@@ -73,6 +76,7 @@ export function useWeather(demoCategory) {
     notice.value = t('weather.notices.demo')
     place.value = { city: t('weather.demo.city'), region: '', country: '' }
     latitude.value = DEMO_LATITUDE
+    longitude.value = DEMO_LONGITUDE
     measures.value = { ...preset, isDay: true, category: demo }
     hourly.value = Array.from({ length: HOURLY_SLOTS }, (_, index) => ({
       label: `${(10 + index) % 24}h`,
@@ -96,6 +100,7 @@ export function useWeather(demoCategory) {
         country: result.match.country ?? '',
       }
       latitude.value = result.match.latitude ?? null
+      longitude.value = result.match.longitude ?? null
       phase.value = 'ready'
       searchError.value = ''
       if (!asFallback) notice.value = ''
@@ -124,6 +129,7 @@ export function useWeather(demoCategory) {
         country: located.countryName ?? '',
       }
       latitude.value = lat
+      longitude.value = lon
       phase.value = 'ready'
       notice.value = ''
     } catch {
@@ -174,6 +180,8 @@ export function useWeather(demoCategory) {
     isDay,
     windSpeed,
     season,
+    latitude,
+    longitude,
     hourly,
     searchTerm,
     searchBusy,
